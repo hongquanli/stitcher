@@ -68,7 +68,6 @@ def _ssim(arr1: Any, arr2: Any, win_size: int) -> float:
 def _register_pair_worker(args: Tuple) -> Tuple:
     """
     Worker function for parallel registration of a tile pair.
-    Must be at module level for pickling by ProcessPoolExecutor.
 
     Parameters
     ----------
@@ -80,19 +79,13 @@ def _register_pair_worker(args: Tuple) -> Tuple:
     tuple
         (i_pos, j_pos, dy_s, dx_s, score) or (i_pos, j_pos, None, None, None) on failure
     """
-    from skimage.exposure import match_histograms as mh_cpu
-    from skimage.measure import block_reduce as br_cpu
-    from skimage.registration import phase_cross_correlation as pcc_cpu
-    from skimage.metrics import structural_similarity as ssim_cpu
-    from scipy.ndimage import shift as shift_cpu
-
     i_pos, j_pos, patch_i, patch_j, df, sw, th, max_shift = args
 
     try:
         # Downsample
         reduce_block = (1, df[0], df[1]) if patch_i.ndim == 3 else tuple(df)
-        g1 = br_cpu(patch_i, reduce_block, np.mean)
-        g2 = br_cpu(patch_j, reduce_block, np.mean)
+        g1 = block_reduce(patch_i, reduce_block, np.mean)
+        g2 = block_reduce(patch_j, reduce_block, np.mean)
 
         # Squeeze to 2D if needed
         while g1.ndim > 2 and g1.shape[0] == 1:
@@ -100,10 +93,10 @@ def _register_pair_worker(args: Tuple) -> Tuple:
             g2 = g2[0]
 
         # Match histograms
-        g2 = mh_cpu(g2, g1)
+        g2 = match_histograms(g2, g1)
 
         # Phase cross-correlation
-        shift, _, _ = pcc_cpu(
+        shift, _, _ = phase_cross_correlation(
             g1.astype(np.float32),
             g2.astype(np.float32),
             normalization="phase",
@@ -111,11 +104,8 @@ def _register_pair_worker(args: Tuple) -> Tuple:
         )
 
         # Apply shift and compute SSIM
-        g2s = shift_cpu(g2, shift=shift, order=1, prefilter=False)
-        data_range = float(g1.max() - g1.min())
-        if data_range == 0:
-            data_range = 1.0
-        ssim_val = float(ssim_cpu(g1, g2s, win_size=sw, data_range=data_range))
+        g2s = _shift_array(g2, shift_vec=shift)
+        ssim_val = _ssim(g1, g2s, win_size=sw)
 
         # Scale shift back to original resolution
         dy_s, dx_s = int(np.round(shift[0] * df[0])), int(np.round(shift[1] * df[1]))
