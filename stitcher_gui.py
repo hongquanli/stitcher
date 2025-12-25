@@ -219,62 +219,74 @@ class PreviewWorker(QThread):
 
     def run(self):
         try:
-            import tifffile
             import numpy as np
             from tilefusion import TileFusion
             
             self.progress.emit("Loading metadata...")
             
-            tf = TileFusion(
+            # Create TileFusion instance - handles both OME-TIFF and SQUID formats
+            tf_full = TileFusion(
                 self.tiff_path, 
                 downsample_factors=(self.downsample_factor, self.downsample_factor)
             )
             
-            positions = np.array(tf._tile_positions)
-            unique_x = len(np.unique(np.round(positions[:, 1], -2)))
-            unique_y = len(np.unique(np.round(positions[:, 0], -2)))
-            n_cols, n_rows = unique_x, unique_y
+            positions = np.array(tf_full._tile_positions)
+            
+            # Build proper grid mapping for irregular grids
+            unique_y = np.sort(np.unique(np.round(positions[:, 0], 0)))  # Y positions (rows)
+            unique_x = np.sort(np.unique(np.round(positions[:, 1], 0)))  # X positions (cols)
+            n_rows, n_cols = len(unique_y), len(unique_x)
+            
+            y_to_row = {y: i for i, y in enumerate(unique_y)}
+            x_to_col = {x: i for i, x in enumerate(unique_x)}
+            
+            # Map (row, col) -> tile index
+            grid = {}
+            for idx, (y, x) in enumerate(positions):
+                r = y_to_row[np.round(y, 0)]
+                c = x_to_col[np.round(x, 0)]
+                grid[(r, c)] = idx
             
             self.progress.emit(f"Grid: {n_cols}x{n_rows}, selecting center {self.preview_cols}x{self.preview_rows}")
             
-            center_col, center_row = n_cols // 2, n_rows // 2
-            half_cols, half_rows = self.preview_cols // 2, self.preview_rows // 2
+            center_row, center_col = n_rows // 2, n_cols // 2
+            half_rows, half_cols = self.preview_rows // 2, self.preview_cols // 2
             
             selected_indices = []
+            selected_grid_pos = []  # Track (row, col) for coloring
             for row in range(center_row - half_rows, center_row - half_rows + self.preview_rows):
                 for col in range(center_col - half_cols, center_col - half_cols + self.preview_cols):
-                    if 0 <= row < n_rows and 0 <= col < n_cols:
-                        idx = row * n_cols + col
-                        if idx < tf.n_tiles:
-                            selected_indices.append(idx)
+                    if (row, col) in grid:
+                        selected_indices.append(grid[(row, col)])
+                        selected_grid_pos.append((row - (center_row - half_rows), col - (center_col - half_cols)))
             
             self.progress.emit(f"Selected {len(selected_indices)} tiles")
             
-            original_positions = tf._tile_positions.copy()
+            original_positions = tf_full._tile_positions.copy()
             selected_positions = [original_positions[i] for i in selected_indices]
             
+            # Create a new TileFusion for the subset
+            tf = TileFusion(
+                self.tiff_path, 
+                downsample_factors=(self.downsample_factor, self.downsample_factor)
+            )
             tf._tile_positions = selected_positions
             tf.n_tiles = len(selected_indices)
             tf.position_dim = tf.n_tiles
             tf._tile_index_map = selected_indices
             
+            # Store original read methods
+            original_read_tile = tf._read_tile
+            original_read_tile_region = tf._read_tile_region
+            
             def patched_read_tile(tile_idx):
                 real_idx = tf._tile_index_map[tile_idx]
-                with tifffile.TiffFile(tf.tiff_path) as tif:
-                    arr = tif.series[real_idx].asarray()
-                if arr.ndim == 2:
-                    arr = arr[np.newaxis, :, :]
-                arr = np.flip(arr, axis=-2)
-                return arr.astype(np.float32)
+                # Temporarily restore original method to read from full dataset
+                return original_read_tile.__func__(tf_full, real_idx)
 
             def patched_read_tile_region(tile_idx, y_slice, x_slice):
                 real_idx = tf._tile_index_map[tile_idx]
-                with tifffile.TiffFile(tf.tiff_path) as tif:
-                    arr = tif.series[real_idx].asarray()
-                if arr.ndim == 2:
-                    arr = arr[np.newaxis, :, :]
-                arr = np.flip(arr, axis=-2)
-                return arr[:, y_slice, x_slice].astype(np.float32)
+                return original_read_tile_region.__func__(tf_full, real_idx, y_slice, x_slice)
             
             tf._read_tile = patched_read_tile
             tf._read_tile_region = patched_read_tile_region
@@ -310,42 +322,43 @@ class PreviewWorker(QThread):
             def get_color(row, col):
                 return checkerboard_colors[((row % 2) * 3 + (col % 3)) % 6]
             
-            with tifffile.TiffFile(self.tiff_path) as tif:
-                for i, (pos, orig_idx) in enumerate(zip(selected_positions, selected_indices)):
-                    arr = tif.series[orig_idx].asarray()
-                    arr = np.flip(arr, axis=0)
-                    arr_raw = arr.astype(np.float32)
-                    
-                    p1, p99 = np.percentile(arr_raw, [2, 98])
-                    arr_norm = np.clip((arr_raw - p1) / (p99 - p1 + 1e-6), 0, 1)
-                    
-                    row, col = i // self.preview_cols, i % self.preview_cols
-                    color = get_color(row, col)
-                    
-                    oy_before = int(round((pos[0] - min_y) / pixel_size[0]))
-                    ox_before = int(round((pos[1] - min_x) / pixel_size[1]))
-                    oy_after = oy_before + int(global_offsets[i][0])
-                    ox_after = ox_before + int(global_offsets[i][1])
-                    
-                    th, tw = arr_norm.shape
-                    
-                    # BEFORE
-                    y1, y2 = max(0, oy_before), min(oy_before + th, h)
-                    x1, x2 = max(0, ox_before), min(ox_before + tw, w)
-                    if y2 > y1 and x2 > x1:
-                        tile_h, tile_w = y2 - y1, x2 - x1
-                        for c in range(3):
-                            color_before[y1:y2, x1:x2, c] = (arr_norm[:tile_h, :tile_w] * color[c]).astype(np.uint8)
-                    
-                    # AFTER
-                    y1, y2 = max(0, oy_after), min(oy_after + th, h)
-                    x1, x2 = max(0, ox_after), min(ox_after + tw, w)
-                    if y2 > y1 and x2 > x1:
-                        tile_h, tile_w = y2 - y1, x2 - x1
-                        for c in range(3):
-                            color_after[y1:y2, x1:x2, c] = (arr_norm[:tile_h, :tile_w] * color[c]).astype(np.uint8)
-                        fused[y1:y2, x1:x2] += arr_raw[:tile_h, :tile_w]
-                        weight[y1:y2, x1:x2] += 1.0
+            # Read tiles using TileFusion's format-aware methods
+            for i, (pos, orig_idx) in enumerate(zip(selected_positions, selected_indices)):
+                arr = tf_full._read_tile(orig_idx)
+                if arr.ndim == 3:
+                    arr = arr[0]  # Take first channel for preview
+                arr_raw = arr.astype(np.float32)
+                
+                p1, p99 = np.percentile(arr_raw, [2, 98])
+                arr_norm = np.clip((arr_raw - p1) / (p99 - p1 + 1e-6), 0, 1)
+                
+                grid_row, grid_col = selected_grid_pos[i]
+                color = get_color(grid_row, grid_col)
+                
+                oy_before = int(round((pos[0] - min_y) / pixel_size[0]))
+                ox_before = int(round((pos[1] - min_x) / pixel_size[1]))
+                oy_after = oy_before + int(global_offsets[i][0])
+                ox_after = ox_before + int(global_offsets[i][1])
+                
+                th, tw = arr_norm.shape
+                
+                # BEFORE
+                y1, y2 = max(0, oy_before), min(oy_before + th, h)
+                x1, x2 = max(0, ox_before), min(ox_before + tw, w)
+                if y2 > y1 and x2 > x1:
+                    tile_h, tile_w = y2 - y1, x2 - x1
+                    for c in range(3):
+                        color_before[y1:y2, x1:x2, c] = (arr_norm[:tile_h, :tile_w] * color[c]).astype(np.uint8)
+                
+                # AFTER
+                y1, y2 = max(0, oy_after), min(oy_after + th, h)
+                x1, x2 = max(0, ox_after), min(ox_after + tw, w)
+                if y2 > y1 and x2 > x1:
+                    tile_h, tile_w = y2 - y1, x2 - x1
+                    for c in range(3):
+                        color_after[y1:y2, x1:x2, c] = (arr_norm[:tile_h, :tile_w] * color[c]).astype(np.uint8)
+                    fused[y1:y2, x1:x2] += arr_raw[:tile_h, :tile_w]
+                    weight[y1:y2, x1:x2] += 1.0
             
             weight = np.maximum(weight, 1.0)
             fused = fused / weight
@@ -476,7 +489,7 @@ class FusionWorker(QThread):
 
 
 class DropArea(QFrame):
-    """Drag and drop area for files."""
+    """Drag and drop area for files or folders."""
     fileDropped = pyqtSignal(str)
 
     def __init__(self):
@@ -504,7 +517,7 @@ class DropArea(QFrame):
         self.icon_label.setStyleSheet("font-size: 32px; border: none; background: transparent;")
         layout.addWidget(self.icon_label)
         
-        self.label = QLabel("Drag & Drop OME-TIFF file here\nor click to browse")
+        self.label = QLabel("Drag & Drop OME-TIFF or SQUID folder\nor click to browse")
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setStyleSheet("color: #86868b; font-size: 13px; border: none; background: transparent;")
         layout.addWidget(self.label)
@@ -543,24 +556,45 @@ class DropArea(QFrame):
         urls = event.mimeData().urls()
         if urls:
             file_path = urls[0].toLocalFile()
-            if file_path.endswith(('.tif', '.tiff')):
+            path = Path(file_path)
+            # Accept TIFF files or folders (SQUID format)
+            if path.is_dir() or file_path.endswith(('.tif', '.tiff')):
                 self.setFile(file_path)
                 self.fileDropped.emit(file_path)
 
     def mousePressEvent(self, event):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select OME-TIFF file", "",
-            "TIFF files (*.tif *.tiff);;All files (*.*)"
-        )
-        if file_path:
-            self.setFile(file_path)
-            self.fileDropped.emit(file_path)
+        from PyQt5.QtWidgets import QMenu, QAction
+        
+        menu = QMenu(self)
+        file_action = menu.addAction("Select OME-TIFF file...")
+        folder_action = menu.addAction("Select SQUID folder...")
+        
+        action = menu.exec_(self.mapToGlobal(event.pos()))
+        
+        if action == file_action:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Select OME-TIFF file", "",
+                "TIFF files (*.tif *.tiff);;All files (*.*)"
+            )
+            if file_path:
+                self.setFile(file_path)
+                self.fileDropped.emit(file_path)
+        elif action == folder_action:
+            folder_path = QFileDialog.getExistingDirectory(
+                self, "Select SQUID folder"
+            )
+            if folder_path:
+                self.setFile(folder_path)
+                self.fileDropped.emit(folder_path)
 
     def setFile(self, file_path):
         self.file_path = file_path
-        filename = Path(file_path).name
+        path = Path(file_path)
         self.icon_label.setText("✅")
-        self.label.setText(filename)
+        if path.is_dir():
+            self.label.setText(f"📁 {path.name}")
+        else:
+            self.label.setText(path.name)
         self.label.setStyleSheet("color: #34c759; font-size: 13px; font-weight: 600; border: none; background: transparent;")
 
 
@@ -726,7 +760,11 @@ class StitcherGUI(QMainWindow):
         layout.addStretch()
 
     def on_file_dropped(self, file_path):
-        self.log(f"Selected: {file_path}")
+        path = Path(file_path)
+        if path.is_dir():
+            self.log(f"Selected SQUID folder: {file_path}")
+        else:
+            self.log(f"Selected OME-TIFF: {file_path}")
         self.run_button.setEnabled(True)
         self.preview_button.setEnabled(True)
 

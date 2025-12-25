@@ -225,11 +225,16 @@ class TileFusion:
     ):
         self.tiff_path = Path(tiff_path)
         if not self.tiff_path.exists():
-            raise FileNotFoundError(f"TIFF file not found: {self.tiff_path}")
+            raise FileNotFoundError(f"Path not found: {self.tiff_path}")
 
         self.output_path = Path(output_path) if output_path else self.tiff_path.parent / f"{self.tiff_path.stem}_fused.ome.zarr"
 
-        self._load_ome_tiff_metadata()
+        # Detect format: folder (SQUID) vs file (OME-TIFF)
+        self._is_squid_format = self.tiff_path.is_dir()
+        if self._is_squid_format:
+            self._load_squid_metadata()
+        else:
+            self._load_ome_tiff_metadata()
 
         self.downsample_factors = tuple(downsample_factors)
         self.ssim_window = int(ssim_window)
@@ -295,6 +300,81 @@ class TileFusion:
                     self._tile_positions.append((y, x))
                 else:
                     self._tile_positions.append((0.0, 0.0))
+
+    def _load_squid_metadata(self) -> None:
+        """Load metadata from SQUID folder format (individual TIFFs + coordinates.csv)."""
+        import pandas as pd
+        import json
+        
+        # Find the subfolder containing images (usually "0" for single z-level)
+        subfolders = [d for d in self.tiff_path.iterdir() if d.is_dir()]
+        if subfolders:
+            self._squid_image_folder = subfolders[0]
+        else:
+            self._squid_image_folder = self.tiff_path
+        
+        # Load coordinates from the subfolder's coordinates.csv
+        coords_path = self._squid_image_folder / "coordinates.csv"
+        if not coords_path.exists():
+            coords_path = self.tiff_path / "coordinates.csv"
+        if not coords_path.exists():
+            raise FileNotFoundError(f"coordinates.csv not found in {self.tiff_path}")
+        
+        self._squid_coords = pd.read_csv(coords_path)
+        self.n_tiles = len(self._squid_coords)
+        self.n_series = self.n_tiles
+        
+        # Get list of channels from TIFF filenames
+        tiff_files = list(self._squid_image_folder.glob("*.tiff"))
+        if not tiff_files:
+            tiff_files = list(self._squid_image_folder.glob("*.tif"))
+        
+        # Extract unique channel names (e.g., "Fluorescence_405_nm_Ex")
+        channel_names = set()
+        for f in tiff_files:
+            # Pattern: manual_{fov}_{z}_Fluorescence_{wavelength}.tiff
+            parts = f.stem.split('_')
+            if len(parts) >= 4:
+                channel_name = '_'.join(parts[3:])  # e.g., "Fluorescence_405_nm_Ex"
+                channel_names.add(channel_name)
+        
+        self._squid_channels = sorted(channel_names)
+        self.channels = len(self._squid_channels)
+        self.time_dim = 1
+        self.position_dim = self.n_tiles
+        
+        # Read first image to get dimensions
+        first_fov = self._squid_coords['fov'].iloc[0]
+        first_channel = self._squid_channels[0]
+        first_img_path = self._squid_image_folder / f"manual_{first_fov}_0_{first_channel}.tiff"
+        if not first_img_path.exists():
+            first_img_path = self._squid_image_folder / f"manual_{first_fov}_0_{first_channel}.tif"
+        
+        first_img = tifffile.imread(first_img_path)
+        self.Y, self.X = first_img.shape[-2:]
+        
+        # Load pixel size from acquisition parameters
+        params_path = self.tiff_path / "acquisition parameters.json"
+        if params_path.exists():
+            with open(params_path) as f:
+                params = json.load(f)
+            magnification = params.get('objective', {}).get('magnification', 10.0)
+            sensor_pixel_um = params.get('sensor_pixel_size_um', 7.52)
+            pixel_size_um = sensor_pixel_um / magnification
+        else:
+            pixel_size_um = 0.752  # Default for 10x
+        
+        self._pixel_size = (pixel_size_um, pixel_size_um)
+        
+        # Convert mm coordinates to µm and store as (y, x)
+        self._tile_positions = []
+        for _, row in self._squid_coords.iterrows():
+            x_um = row['x (mm)'] * 1000
+            y_um = row['y (mm)'] * 1000
+            self._tile_positions.append((y_um, x_um))
+        
+        # Store FOV indices for reading tiles
+        self._squid_fov_indices = self._squid_coords['fov'].tolist()
 
     @property
     def tile_positions(self) -> List[Tuple[float, float]]:
@@ -382,13 +462,33 @@ class TileFusion:
         return prof
 
     def _read_tile(self, tile_idx: int) -> np.ndarray:
-        """Read a single tile from the OME-TIFF file."""
-        with tifffile.TiffFile(self.tiff_path) as tif:
-            arr = tif.series[tile_idx].asarray()
+        """Read a single tile from the input data."""
+        if self._is_squid_format:
+            return self._read_squid_tile(tile_idx)
+        else:
+            with tifffile.TiffFile(self.tiff_path) as tif:
+                arr = tif.series[tile_idx].asarray()
+            if arr.ndim == 2:
+                arr = arr[np.newaxis, :, :]
+            # Flip along Y axis to correct orientation
+            arr = np.flip(arr, axis=-2)
+            return arr.astype(np.float32)
+
+    def _read_squid_tile(self, tile_idx: int, channel_idx: int = None) -> np.ndarray:
+        """Read a tile from SQUID folder format."""
+        if channel_idx is None:
+            channel_idx = self.channel_to_use
+        
+        fov = self._squid_fov_indices[tile_idx]
+        channel_name = self._squid_channels[channel_idx]
+        
+        img_path = self._squid_image_folder / f"manual_{fov}_0_{channel_name}.tiff"
+        if not img_path.exists():
+            img_path = self._squid_image_folder / f"manual_{fov}_0_{channel_name}.tif"
+        
+        arr = tifffile.imread(img_path)
         if arr.ndim == 2:
             arr = arr[np.newaxis, :, :]
-        # Flip along Y axis to correct orientation
-        arr = np.flip(arr, axis=-2)
         return arr.astype(np.float32)
 
     def _read_tile_region(
@@ -397,14 +497,18 @@ class TileFusion:
         y_slice: slice,
         x_slice: slice,
     ) -> np.ndarray:
-        """Read a region of a tile from the OME-TIFF file."""
-        with tifffile.TiffFile(self.tiff_path) as tif:
-            arr = tif.series[tile_idx].asarray()
-        if arr.ndim == 2:
-            arr = arr[np.newaxis, :, :]
-        # Flip along Y axis to correct orientation
-        arr = np.flip(arr, axis=-2)
-        return arr[:, y_slice, x_slice].astype(np.float32)
+        """Read a region of a tile from the input data."""
+        if self._is_squid_format:
+            arr = self._read_squid_tile(tile_idx)
+            return arr[:, y_slice, x_slice]
+        else:
+            with tifffile.TiffFile(self.tiff_path) as tif:
+                arr = tif.series[tile_idx].asarray()
+            if arr.ndim == 2:
+                arr = arr[np.newaxis, :, :]
+            # Flip along Y axis to correct orientation
+            arr = np.flip(arr, axis=-2)
+            return arr[:, y_slice, x_slice].astype(np.float32)
 
     @staticmethod
     def register_and_score(
