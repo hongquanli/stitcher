@@ -686,6 +686,37 @@ class StitcherGUI(QMainWindow):
         self.drop_area.fileDropped.connect(self.on_file_dropped)
         layout.addWidget(self.drop_area)
 
+        # Preview section
+        preview_group = QGroupBox("Preview")
+        preview_layout = QHBoxLayout(preview_group)
+
+        preview_layout.addWidget(QLabel("Grid size:"))
+
+        self.preview_cols_spin = QSpinBox()
+        self.preview_cols_spin.setRange(2, 15)
+        self.preview_cols_spin.setValue(5)
+        self.preview_cols_spin.setFixedWidth(60)
+        preview_layout.addWidget(self.preview_cols_spin)
+
+        preview_layout.addWidget(QLabel("x"))
+
+        self.preview_rows_spin = QSpinBox()
+        self.preview_rows_spin.setRange(2, 15)
+        self.preview_rows_spin.setValue(5)
+        self.preview_rows_spin.setFixedWidth(60)
+        preview_layout.addWidget(self.preview_rows_spin)
+
+        preview_layout.addStretch()
+
+        self.preview_button = QPushButton("👁 Preview")
+        self.preview_button.setObjectName("previewButton")
+        self.preview_button.setCursor(Qt.PointingHandCursor)
+        self.preview_button.clicked.connect(self.run_preview)
+        self.preview_button.setEnabled(False)
+        preview_layout.addWidget(self.preview_button)
+
+        layout.addWidget(preview_group)
+
         # Registration settings
         reg_group = QGroupBox("Settings")
         reg_layout = QVBoxLayout(reg_group)
@@ -742,37 +773,6 @@ class StitcherGUI(QMainWindow):
         reg_layout.addWidget(self.blend_value_widget)
 
         layout.addWidget(reg_group)
-
-        # Preview section
-        preview_group = QGroupBox("Preview")
-        preview_layout = QHBoxLayout(preview_group)
-
-        preview_layout.addWidget(QLabel("Grid size:"))
-
-        self.preview_cols_spin = QSpinBox()
-        self.preview_cols_spin.setRange(2, 15)
-        self.preview_cols_spin.setValue(5)
-        self.preview_cols_spin.setFixedWidth(60)
-        preview_layout.addWidget(self.preview_cols_spin)
-
-        preview_layout.addWidget(QLabel("x"))
-
-        self.preview_rows_spin = QSpinBox()
-        self.preview_rows_spin.setRange(2, 15)
-        self.preview_rows_spin.setValue(5)
-        self.preview_rows_spin.setFixedWidth(60)
-        preview_layout.addWidget(self.preview_rows_spin)
-
-        preview_layout.addStretch()
-
-        self.preview_button = QPushButton("👁 Preview")
-        self.preview_button.setObjectName("previewButton")
-        self.preview_button.setCursor(Qt.PointingHandCursor)
-        self.preview_button.clicked.connect(self.run_preview)
-        self.preview_button.setEnabled(False)
-        preview_layout.addWidget(self.preview_button)
-
-        layout.addWidget(preview_group)
 
         # Run button
         self.run_button = QPushButton("▶  Run Stitching")
