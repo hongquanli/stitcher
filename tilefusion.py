@@ -920,8 +920,22 @@ class TileFusion:
 
         self.fused_ts = ts.open(config, create=True, open=True).result()
 
-    def _fuse_tiles(self) -> None:
-        """Fuse all tiles using weighted blending."""
+    def _fuse_tiles(self, chunked: bool = True, ram_fraction: float = 0.4) -> None:
+        """Fuse all tiles using weighted blending.
+
+        Parameters
+        ----------
+        chunked : bool
+            If True, use memory-efficient chunked processing. Default True.
+        ram_fraction : float
+            Fraction of available RAM to use for block processing. Default 0.4.
+        """
+        if chunked:
+            return self._fuse_tiles_chunked(ram_fraction)
+        return self._fuse_tiles_full()
+
+    def _fuse_tiles_full(self) -> None:
+        """Fuse all tiles using full-image accumulator (legacy mode)."""
         offsets = [
             (
                 int((y - self.offset[0]) / self._pixel_size[0]),
@@ -957,6 +971,118 @@ class TileFusion:
             ).result()
 
             del fused_block, weight_sum
+            gc.collect()
+            if USING_GPU and cp is not None:
+                cp.get_default_memory_pool().free_all_blocks()
+                cp.get_default_pinned_memory_pool().free_all_blocks()
+
+    def _fuse_tiles_chunked(self, ram_fraction: float = 0.4) -> None:
+        """Fuse tiles using memory-efficient super-chunk processing.
+
+        Parameters
+        ----------
+        ram_fraction : float
+            Fraction of available RAM to use for block processing.
+        """
+        import psutil
+
+        # Calculate block size from available RAM
+        available_ram = psutil.virtual_memory().available
+        usable_ram = int(available_ram * ram_fraction)
+
+        # Need 2 float32 arrays (fused_block + weight_sum)
+        bytes_per_pixel = 4 * 2  # float32 × 2 arrays
+        max_pixels = usable_ram // bytes_per_pixel
+        block_size = int(np.sqrt(max_pixels))
+
+        # Round to chunk boundary for efficient TensorStore writes
+        block_size = (block_size // self.chunk_y) * self.chunk_y
+        block_size = max(block_size, self.chunk_y * 2)  # Minimum 2 chunks
+
+        pad_Y, pad_X = self.padded_shape
+
+        # If block covers entire image, use full mode (more efficient)
+        if block_size >= max(pad_Y, pad_X):
+            print(f"Image fits in RAM budget ({usable_ram / 1e9:.1f} GB), using full mode")
+            return self._fuse_tiles_full()
+
+        print(
+            f"Using chunked mode: {block_size}×{block_size} blocks "
+            f"({usable_ram / 1e9:.1f} GB RAM budget)"
+        )
+
+        # Build spatial index: tile bounds in output coordinates
+        tile_bounds = []
+        for y, x in self._tile_positions:
+            oy = int((y - self.offset[0]) / self._pixel_size[0])
+            ox = int((x - self.offset[1]) / self._pixel_size[1])
+            tile_bounds.append((oy, oy + self.Y, ox, ox + self.X))
+
+        # Count total blocks for progress
+        n_blocks_y = (pad_Y + block_size - 1) // block_size
+        n_blocks_x = (pad_X + block_size - 1) // block_size
+        total_blocks = n_blocks_y * n_blocks_x
+
+        # Process each channel
+        for c in range(self.channels):
+            block_idx = 0
+            for block_y in range(0, pad_Y, block_size):
+                for block_x in range(0, pad_X, block_size):
+                    block_idx += 1
+                    by_end = min(block_y + block_size, pad_Y)
+                    bx_end = min(block_x + block_size, pad_X)
+                    bh, bw = by_end - block_y, bx_end - block_x
+
+                    # Find overlapping tiles
+                    overlapping = []
+                    for t_idx, (ty0, ty1, tx0, tx1) in enumerate(tile_bounds):
+                        if ty1 > block_y and ty0 < by_end and tx1 > block_x and tx0 < bx_end:
+                            overlapping.append(t_idx)
+
+                    if not overlapping:
+                        continue  # Empty block
+
+                    # Allocate block accumulator
+                    fused_block = np.zeros((1, bh, bw), dtype=np.float32)
+                    weight_sum = np.zeros_like(fused_block)
+
+                    # Accumulate overlapping tiles
+                    desc = f"ch{c} block {block_idx}/{total_blocks}"
+                    for t_idx in tqdm(overlapping, desc=desc, leave=False):
+                        tile_all = self._read_tile(t_idx)
+                        tile = tile_all[c : c + 1] if tile_all.shape[0] > 1 else tile_all
+
+                        ty0, ty1, tx0, tx1 = tile_bounds[t_idx]
+
+                        # Compute overlap region in block coordinates
+                        oy0 = max(ty0, block_y) - block_y
+                        oy1 = min(ty1, by_end) - block_y
+                        ox0 = max(tx0, block_x) - block_x
+                        ox1 = min(tx1, bx_end) - block_x
+
+                        # Source region in tile coordinates
+                        sy0 = max(block_y - ty0, 0)
+                        sy1 = sy0 + (oy1 - oy0)
+                        sx0 = max(block_x - tx0, 0)
+                        sx1 = sx0 + (ox1 - ox0)
+
+                        # Get weight for this region
+                        w2d = self.y_profile[sy0:sy1, None] * self.x_profile[None, sx0:sx1]
+
+                        # Accumulate
+                        fused_block[0, oy0:oy1, ox0:ox1] += tile[0, sy0:sy1, sx0:sx1] * w2d
+                        weight_sum[0, oy0:oy1, ox0:ox1] += w2d
+
+                    # Normalize and write
+                    mask = weight_sum > 0
+                    fused_block[mask] /= weight_sum[mask]
+
+                    self.fused_ts[0, c : c + 1, block_y:by_end, block_x:bx_end].write(
+                        fused_block.astype(np.uint16)
+                    ).result()
+
+                    del fused_block, weight_sum
+
             gc.collect()
             if USING_GPU and cp is not None:
                 cp.get_default_memory_pool().free_all_blocks()
