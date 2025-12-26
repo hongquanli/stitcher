@@ -6,6 +6,13 @@ Stitcher GUI - A simple interface for tile fusion of OME-TIFF files.
 import sys
 import os
 from pathlib import Path
+
+# Fix Qt plugin path for conda environments on macOS
+if sys.platform == "darwin" and "CONDA_PREFIX" in os.environ:
+    conda_plugins = Path(os.environ["CONDA_PREFIX"]) / "plugins"
+    if conda_plugins.exists() and "QT_PLUGIN_PATH" not in os.environ:
+        os.environ["QT_PLUGIN_PATH"] = str(conda_plugins)
+
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -654,7 +661,7 @@ class StitcherGUI(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Tile Stitcher")
+        self.setWindowTitle("Stitcher")
         self.setMinimumSize(500, 600)
 
         self.worker = None
@@ -670,16 +677,10 @@ class StitcherGUI(QMainWindow):
         layout.setContentsMargins(24, 24, 24, 24)
 
         # Title
-        title = QLabel("Tile Stitcher")
+        title = QLabel("Stitcher")
         title.setObjectName("title")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
-
-        # Subtitle
-        subtitle = QLabel("GPU-accelerated tile fusion for OME-TIFF microscopy data")
-        subtitle.setObjectName("subtitle")
-        subtitle.setAlignment(Qt.AlignCenter)
-        layout.addWidget(subtitle)
 
         # Drop area
         self.drop_area = DropArea()

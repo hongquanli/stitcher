@@ -228,11 +228,11 @@ def convert_squid_to_zarr(
     return output_path
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Convert Squid format to Zarr")
-    parser.add_argument("squid_path", help="Path to Squid data folder")
+    parser = argparse.ArgumentParser(description="Convert individual TIFFs folder to Zarr")
+    parser.add_argument("input_path", help="Path to data folder with coordinates.csv")
     parser.add_argument("-o", "--output", help="Output Zarr path (default: {name}.zarr)")
     parser.add_argument(
         "--no-compress",
@@ -241,4 +241,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    convert_squid_to_zarr(args.squid_path, args.output, compress=not args.no_compress)
+    convert_squid_to_zarr(args.input_path, args.output, compress=not args.no_compress)
+
+
+if __name__ == "__main__":
+    main()
