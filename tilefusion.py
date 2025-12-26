@@ -808,8 +808,11 @@ class TileFusion:
                 )
 
             try:
-                patch_i = io_executor.submit(read_patch, i_pos, bounds_i_y, bounds_i_x).result()
-                patch_j = io_executor.submit(read_patch, j_pos, bounds_j_y, bounds_j_x).result()
+                # Submit both reads in parallel, then wait
+                future_i = io_executor.submit(read_patch, i_pos, bounds_i_y, bounds_i_x)
+                future_j = io_executor.submit(read_patch, j_pos, bounds_j_y, bounds_j_x)
+                patch_i = future_i.result()
+                patch_j = future_j.result()
             except Exception as e:
                 if self._debug:
                     print(f"Error reading patches for ({i_pos}, {j_pos}): {e}")
