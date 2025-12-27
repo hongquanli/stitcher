@@ -8,6 +8,11 @@ from .individual_tiffs import (
     read_individual_tiffs_tile,
     read_individual_tiffs_region,
 )
+from .ome_tiff_tiles import (
+    load_ome_tiff_tiles_metadata,
+    read_ome_tiff_tiles_tile,
+    read_ome_tiff_tiles_region,
+)
 from .zarr import (
     load_zarr_metadata,
     read_zarr_tile,
@@ -24,6 +29,9 @@ __all__ = [
     "load_individual_tiffs_metadata",
     "read_individual_tiffs_tile",
     "read_individual_tiffs_region",
+    "load_ome_tiff_tiles_metadata",
+    "read_ome_tiff_tiles_tile",
+    "read_ome_tiff_tiles_region",
     "load_zarr_metadata",
     "read_zarr_tile",
     "read_zarr_region",

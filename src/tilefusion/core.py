@@ -33,11 +33,14 @@ from .optimization import links_from_pairwise_metrics, solve_global, two_round_o
 from .io import (
     load_ome_tiff_metadata,
     load_individual_tiffs_metadata,
+    load_ome_tiff_tiles_metadata,
     load_zarr_metadata,
     read_ome_tiff_tile,
     read_ome_tiff_region,
     read_individual_tiffs_tile,
     read_individual_tiffs_region,
+    read_ome_tiff_tiles_tile,
+    read_ome_tiff_tiles_region,
     read_zarr_tile,
     read_zarr_region,
     create_zarr_store,
@@ -116,22 +119,29 @@ class TileFusion:
         # Detect and load format
         self._is_zarr_format = False
         self._is_individual_tiffs_format = False
+        self._is_ome_tiff_tiles_format = False
         self._metadata = {}
 
         if self.tiff_path.is_dir():
-            zarr_json = self.tiff_path / "zarr.json"
-            if zarr_json.exists():
-                with open(zarr_json) as f:
-                    meta = json.load(f)
-                if "attributes" in meta and "per_index_metadata" in meta.get("attributes", {}):
-                    self._is_zarr_format = True
-                    self._metadata = load_zarr_metadata(self.tiff_path)
+            # Check for ome_tiff tiles format first (ome_tiff/ folder with .ome.tiff files)
+            ome_tiff_folder = self.tiff_path / "ome_tiff"
+            if ome_tiff_folder.exists() and list(ome_tiff_folder.glob("*.ome.tiff"))[:1]:
+                self._is_ome_tiff_tiles_format = True
+                self._metadata = load_ome_tiff_tiles_metadata(self.tiff_path)
+            else:
+                zarr_json = self.tiff_path / "zarr.json"
+                if zarr_json.exists():
+                    with open(zarr_json) as f:
+                        meta = json.load(f)
+                    if "attributes" in meta and "per_index_metadata" in meta.get("attributes", {}):
+                        self._is_zarr_format = True
+                        self._metadata = load_zarr_metadata(self.tiff_path)
+                    else:
+                        self._is_individual_tiffs_format = True
+                        self._metadata = load_individual_tiffs_metadata(self.tiff_path)
                 else:
                     self._is_individual_tiffs_format = True
                     self._metadata = load_individual_tiffs_metadata(self.tiff_path)
-            else:
-                self._is_individual_tiffs_format = True
-                self._metadata = load_individual_tiffs_metadata(self.tiff_path)
         else:
             self._metadata = load_ome_tiff_metadata(self.tiff_path)
 
@@ -300,6 +310,16 @@ class TileFusion:
                 time_idx=time_idx,
                 time_folders=self._time_folders,
             )
+        elif self._is_ome_tiff_tiles_format:
+            return read_ome_tiff_tiles_tile(
+                self._metadata["ome_tiff_folder"],
+                self._metadata["tile_identifiers"],
+                self._metadata["tile_file_map"],
+                tile_idx,
+                self._metadata["axes"],
+                z_level=z_level,
+                time_idx=time_idx,
+            )
         else:
             return read_ome_tiff_tile(self.tiff_path, tile_idx)
 
@@ -331,6 +351,19 @@ class TileFusion:
                 z_level=z_level,
                 time_idx=time_idx,
                 time_folders=self._time_folders,
+            )
+        elif self._is_ome_tiff_tiles_format:
+            return read_ome_tiff_tiles_region(
+                self._metadata["ome_tiff_folder"],
+                self._metadata["tile_identifiers"],
+                self._metadata["tile_file_map"],
+                tile_idx,
+                self._metadata["axes"],
+                y_slice,
+                x_slice,
+                self.channel_to_use,
+                z_level=z_level,
+                time_idx=time_idx,
             )
         else:
             return read_ome_tiff_region(self.tiff_path, tile_idx, y_slice, x_slice)
