@@ -49,7 +49,6 @@ from .io import (
     write_scale_group_metadata,
     OMETiffReader,
 )
-from .cache import TileCache
 
 
 class TileFusion:
@@ -499,7 +498,7 @@ class TileFusion:
         th: float,
         max_shift: Tuple[int, int],
     ) -> None:
-        """Register tile pairs using persistent file handle and caching (OME-TIFF only)."""
+        """Register tile pairs using persistent file handle (OME-TIFF only)."""
         import psutil
 
         available_ram = psutil.virtual_memory().available
@@ -511,26 +510,20 @@ class TileFusion:
         n_batches = (n_pairs + batch_size - 1) // batch_size
         n_workers = min(cpu_count(), batch_size, 8)
 
-        # Estimate cache size: enough for tiles that appear in multiple pairs
-        cache_size = min(256, len(self._tile_positions) * 2)
-
         if n_batches > 1:
-            print(f"Processing {n_pairs} pairs in {n_batches} batches (optimized)")
+            print(f"Processing {n_pairs} pairs in {n_batches} batches")
 
         with OMETiffReader(self.tiff_path) as reader:
-            cache = TileCache(maxsize=cache_size)
 
-            def read_pair_patches_cached(args):
+            def read_pair_patches(args):
                 i_pos, j_pos, bounds_i_y, bounds_i_x, bounds_j_y, bounds_j_x = args
                 try:
-                    patch_i = cache.get(
-                        reader,
+                    patch_i = reader.read_region(
                         i_pos,
                         slice(bounds_i_y[0], bounds_i_y[1]),
                         slice(bounds_i_x[0], bounds_i_x[1]),
                     )
-                    patch_j = cache.get(
-                        reader,
+                    patch_j = reader.read_region(
                         j_pos,
                         slice(bounds_j_y[0], bounds_j_y[1]),
                         slice(bounds_j_x[0], bounds_j_x[1]),
@@ -544,8 +537,7 @@ class TileFusion:
                 end = min(start + batch_size, n_pairs)
                 batch = pair_bounds[start:end]
 
-                # Read patches (single-threaded since file handle is shared)
-                patches = [read_pair_patches_cached(args) for args in batch]
+                patches = [read_pair_patches(args) for args in batch]
 
                 work_items = [
                     (i, j, pi, pj, df, sw, th, max_shift)
@@ -570,10 +562,6 @@ class TileFusion:
 
                 del patches, work_items, results
                 gc.collect()
-
-            if self._debug:
-                print(f"Cache stats: {cache.hits} hits, {cache.misses} misses, "
-                      f"hit rate: {cache.hit_rate:.1%}")
 
     def _register_sequential(
         self,
