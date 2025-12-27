@@ -1106,7 +1106,40 @@ class StitcherGUI(QMainWindow):
             # Use lowest resolution level for fast auto-contrast computation
             lowest_res = pyramid_data[-1]
 
-            if n_channels > 1:
+            # Check if we have multiple z or t
+            has_zt_dims = is_5d and (n_z > 1 or shape[0] > 1)  # shape[0] is T
+
+            if has_zt_dims:
+                # Load full 5D data for z/t sliders (use only scale0 for memory)
+                store = pyramid_data[0]
+                self.log(f"Loading full volume: T={shape[0]}, C={n_channels}, Z={n_z}")
+
+                for c in range(n_channels):
+                    # Read full t, z for this channel: (T, Z, Y, X)
+                    data = store[:, c, :, :, :].read().result()
+                    data = np.asarray(data)
+
+                    # Auto-contrast from middle slice
+                    mid_t, mid_z = data.shape[0] // 2, data.shape[1] // 2
+                    contrast = auto_contrast(data[mid_t, mid_z])
+
+                    name = (
+                        channel_names[c]
+                        if channel_names and c < len(channel_names)
+                        else f"Channel {c}"
+                    )
+                    layer = viewer.add_image(
+                        data,
+                        name=name,
+                        colormap=channel_colors[c % len(channel_colors)],
+                        blending="additive",
+                        contrast_limits=contrast,
+                    )
+                    layer.contrast_limits_range = dtype_range(data.dtype)
+
+                # Set axis labels for sliders after adding layers
+                viewer.dims.axis_labels = ("t", "z", "y", "x")
+            elif n_channels > 1:
                 for c in range(n_channels):
                     # Read channel data from each pyramid level
                     channel_pyramid = []

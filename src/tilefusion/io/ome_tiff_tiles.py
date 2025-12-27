@@ -131,6 +131,7 @@ def load_ome_tiff_tiles_metadata(folder_path: Path) -> Dict[str, Any]:
         with tifffile.TiffFile(first_file) as tif:
             if tif.ome_metadata:
                 import xml.etree.ElementTree as ET
+
                 root = ET.fromstring(tif.ome_metadata)
                 ns = {"ome": "http://www.openmicroscopy.org/Schemas/OME/2016-06"}
                 for channel in root.findall(".//ome:Channel", ns):
@@ -195,9 +196,7 @@ def load_ome_tiff_tiles_metadata(folder_path: Path) -> Dict[str, Any]:
     }
 
 
-def _get_tile_file(
-    ome_tiff_folder: Path, tile_id: tuple, tile_file_map: Dict
-) -> Path:
+def _get_tile_file(ome_tiff_folder: Path, tile_id: tuple, tile_file_map: Dict) -> Path:
     """Get the OME-TIFF file path for a tile."""
     if tile_id in tile_file_map:
         return tile_file_map[tile_id]

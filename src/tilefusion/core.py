@@ -289,9 +289,7 @@ class TileFusion:
     # I/O methods (delegate to format-specific loaders)
     # -------------------------------------------------------------------------
 
-    def _read_tile(
-        self, tile_idx: int, z_level: int = None, time_idx: int = 0
-    ) -> np.ndarray:
+    def _read_tile(self, tile_idx: int, z_level: int = None, time_idx: int = 0) -> np.ndarray:
         """Read a single tile from the input data (all channels)."""
         if z_level is None:
             z_level = self._middle_z  # Default to middle z for registration
@@ -687,7 +685,11 @@ class TileFusion:
                 print(f"Direct mode: using in-memory buffer ({output_bytes / 1e9:.2f} GB)")
             output = np.zeros((1, self.channels, 1, pad_Y, pad_X), dtype=np.uint16)
 
-            iterator = trange(len(offsets), desc="placing tiles", leave=True) if show_progress else range(len(offsets))
+            iterator = (
+                trange(len(offsets), desc="placing tiles", leave=True)
+                if show_progress
+                else range(len(offsets))
+            )
             for t_idx in iterator:
                 oy, ox = offsets[t_idx]
                 tile_all = self._read_tile(t_idx, z_level=z_level, time_idx=time_idx)
@@ -709,7 +711,11 @@ class TileFusion:
         else:
             if show_progress:
                 print(f"Direct mode: writing directly to disk")
-            iterator = trange(len(offsets), desc="placing tiles", leave=True) if show_progress else range(len(offsets))
+            iterator = (
+                trange(len(offsets), desc="placing tiles", leave=True)
+                if show_progress
+                else range(len(offsets))
+            )
             for t_idx in iterator:
                 oy, ox = offsets[t_idx]
                 tile_all = self._read_tile(t_idx, z_level=z_level, time_idx=time_idx)
@@ -745,7 +751,11 @@ class TileFusion:
         w2d = self.y_profile[:, None] * self.x_profile[None, :]
 
         show_progress = self.n_t == 1 and self.n_z == 1
-        iterator = trange(len(offsets), desc="fusing", leave=True) if show_progress else range(len(offsets))
+        iterator = (
+            trange(len(offsets), desc="fusing", leave=True)
+            if show_progress
+            else range(len(offsets))
+        )
 
         for t_idx in iterator:
             oy, ox = offsets[t_idx]
@@ -825,7 +835,9 @@ class TileFusion:
                 weight_sum = np.zeros_like(fused_block)
 
                 desc = f"block {block_idx}/{total_blocks}"
-                iterator = tqdm(overlapping, desc=desc, leave=False) if show_progress else overlapping
+                iterator = (
+                    tqdm(overlapping, desc=desc, leave=False) if show_progress else overlapping
+                )
                 for t_idx in iterator:
                     tile_all = self._read_tile(t_idx, z_level=z_level, time_idx=time_idx)
 
@@ -1020,7 +1032,9 @@ class TileFusion:
             return
 
         if len(self._unique_regions) == 1:
-            print(f"Only one region ({self._unique_regions[0]}) found. Running standard stitching...")
+            print(
+                f"Only one region ({self._unique_regions[0]}) found. Running standard stitching..."
+            )
             self.run()
             return
 
