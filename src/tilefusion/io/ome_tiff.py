@@ -94,8 +94,9 @@ def load_ome_tiff_metadata(tiff_path: Path) -> Dict[str, Any]:
             "tile_positions": tile_positions,
             "tiff_handle": tif,
         }
-    except (ValueError, ET.ParseError, AttributeError, KeyError, IndexError):
-        # Catch only metadata parsing errors; let other exceptions propagate
+    except (ValueError, ET.ParseError):
+        # Catch only known metadata parsing errors; let other exceptions propagate
+        # to reveal programming bugs (AttributeError, KeyError, IndexError)
         tif.close()
         raise
 

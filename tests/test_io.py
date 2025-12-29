@@ -264,8 +264,10 @@ class TestThreadSafety:
                 # Verify multiple handles were created (one per thread)
                 assert len(tf._all_handles) > 0, "No thread-local handles created"
 
-        except Exception:
-            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+        except (ValueError, AttributeError) as e:
+            if "OME" in str(e) or "series" in str(e).lower():
+                pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+            raise
 
     def test_handles_cleaned_up_after_close(self, sample_ome_tiff):
         """Test that all thread-local handles are closed on cleanup."""
@@ -293,14 +295,10 @@ class TestThreadSafety:
             tf.close()
             assert len(tf._all_handles) == 0, "Handles not cleaned up"
 
-        except Exception as e:
+        except (ValueError, AttributeError) as e:
             if "OME" in str(e) or "series" in str(e).lower():
                 pytest.skip("OME-TIFF creation requires proper OME-XML handling")
             raise
-        finally:
-            # Ensure cleanup even if test fails
-            if tf is not None:
-                tf.close()
 
 
 class TestTileFusionResourceManagement:
@@ -354,8 +352,10 @@ class TestTileFusionResourceManagement:
             assert len(tf._all_handles) > 0, "Handle should be created after read"
             tf.close()
             assert len(tf._all_handles) == 0, "Handles should be cleared after close"
-        except Exception:
-            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+        except (ValueError, AttributeError) as e:
+            if "OME" in str(e) or "series" in str(e).lower():
+                pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+            raise
 
     def test_close_idempotent(self, sample_ome_tiff):
         """Test that close() can be called multiple times safely."""
@@ -365,8 +365,10 @@ class TestTileFusionResourceManagement:
             tf = TileFusion(sample_ome_tiff)
             tf.close()
             tf.close()  # Should not raise
-        except Exception:
-            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+        except (ValueError, AttributeError) as e:
+            if "OME" in str(e) or "series" in str(e).lower():
+                pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+            raise
 
     def test_context_manager(self, sample_ome_tiff):
         """Test context manager protocol cleans up handles on exit."""
@@ -379,5 +381,7 @@ class TestTileFusionResourceManagement:
                 assert len(tf._all_handles) > 0, "Handle should be created"
             # After exiting context, handles should be cleaned up
             assert len(tf._all_handles) == 0, "Handles should be cleared after exit"
-        except Exception:
-            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+        except (ValueError, AttributeError) as e:
+            if "OME" in str(e) or "series" in str(e).lower():
+                pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+            raise
