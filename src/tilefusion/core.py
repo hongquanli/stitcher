@@ -145,6 +145,10 @@ class TileFusion:
                     self._metadata = load_individual_tiffs_metadata(self.tiff_path)
         else:
             self._metadata = load_ome_tiff_metadata(self.tiff_path)
+            # Close the metadata handle immediately - we use thread-local handles
+            # for thread-safe concurrent reads instead of sharing this handle.
+            if "tiff_handle" in self._metadata:
+                self._metadata.pop("tiff_handle").close()
 
         # Extract common properties
         self.n_tiles = self._metadata["n_tiles"]
@@ -241,18 +245,10 @@ class TileFusion:
                     pass  # Best-effort cleanup
             self._all_handles.clear()
 
-        # Clear this thread's handle reference
-        if hasattr(self._thread_local, "tiff_handle"):
-            self._thread_local.tiff_handle = None
-
-        # Close the original metadata handle (backward compatibility)
-        if self._metadata is not None and "tiff_handle" in self._metadata:
-            handle = self._metadata.pop("tiff_handle", None)
-            if handle is not None:
-                try:
-                    handle.close()
-                except Exception:
-                    pass  # Best-effort cleanup
+        # Reset thread-local storage to prevent stale handle access.
+        # Setting individual attributes to None only affects the current thread;
+        # resetting the entire object ensures all threads get fresh handles.
+        self._thread_local = threading.local()
 
     def __enter__(self) -> "TileFusion":
         """Enter the runtime context."""
@@ -263,7 +259,14 @@ class TileFusion:
         self.close()
 
     def __del__(self):
-        """Destructor to ensure file handles are closed."""
+        """
+        Destructor to ensure file handles are closed.
+
+        Note: This is a fallback safety net only. Python does not guarantee
+        when (or if) __del__ is called. Always prefer using the context
+        manager protocol (``with TileFusion(...) as tf:``) or explicitly
+        calling ``close()`` for reliable resource cleanup.
+        """
         try:
             self.close()
         except AttributeError:
@@ -291,7 +294,10 @@ class TileFusion:
             return None
 
         # Check if this thread already has a handle
-        if hasattr(self._thread_local, "tiff_handle") and self._thread_local.tiff_handle is not None:
+        if (
+            hasattr(self._thread_local, "tiff_handle")
+            and self._thread_local.tiff_handle is not None
+        ):
             return self._thread_local.tiff_handle
 
         # Create a new handle for this thread

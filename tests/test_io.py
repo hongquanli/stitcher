@@ -184,9 +184,7 @@ class TestThreadSafety:
         path = tmp_path / "test.ome.tiff"
 
         # Create tiles with distinct values for verification
-        data = [
-            np.full((100, 100), fill_value=i * 1000, dtype=np.uint16) for i in range(8)
-        ]
+        data = [np.full((100, 100), fill_value=i * 1000, dtype=np.uint16) for i in range(8)]
 
         ome_xml = """<?xml version="1.0" encoding="UTF-8"?>
         <OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06">"""
@@ -220,6 +218,7 @@ class TestThreadSafety:
 
                 def read_tile(tile_idx):
                     import threading
+
                     thread_id = threading.current_thread().ident
                     try:
                         tile = tf._read_tile(tile_idx)
@@ -248,9 +247,9 @@ class TestThreadSafety:
                     expected_val = tile_idx * 1000
                     # The tile is flipped, so check mean value
                     actual_mean = tile.mean()
-                    assert abs(actual_mean - expected_val) < 1, (
-                        f"Tile {tile_idx}: expected ~{expected_val}, got {actual_mean}"
-                    )
+                    assert (
+                        abs(actual_mean - expected_val) < 1
+                    ), f"Tile {tile_idx}: expected ~{expected_val}, got {actual_mean}"
 
                 # Verify multiple handles were created (one per thread)
                 assert len(tf._all_handles) > 0, "No thread-local handles created"

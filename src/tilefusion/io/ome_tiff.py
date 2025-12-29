@@ -37,6 +37,13 @@ def load_ome_tiff_metadata(tiff_path: Path) -> Dict[str, Any]:
             when it is no longer needed to avoid resource leaks. The handle
             remains valid until it is explicitly closed, or until a higher-level
             context manager (if used) closes it on your behalf.
+
+    .. versionchanged:: 0.2.0
+        Breaking change: Now returns an open ``tiff_handle`` that requires
+        explicit cleanup. Previously this function returned only data without
+        keeping file handles open. Callers using this function directly must
+        now call ``metadata['tiff_handle'].close()`` when done, or use
+        ``TileFusion`` which handles cleanup automatically.
     """
     # Keep file handle open for fast repeated access
     tif = tifffile.TiffFile(tiff_path)
