@@ -336,9 +336,12 @@ class TileFusion:
         if hasattr(self._thread_local, "tiff_handle"):
             handle = self._thread_local.tiff_handle
             # Verify handle exists and is not closed.
-            # Note: We check handle.filehandle because tifffile.TiffFile sets filehandle
-            # to None when closed. This relies on tifffile internals but is reliable.
-            if handle is not None and hasattr(handle, "filehandle") and handle.filehandle:
+            # We check filehandle.closed which is a reliable indicator.
+            if (
+                handle is not None
+                and handle.filehandle is not None
+                and not handle.filehandle.closed
+            ):
                 return handle
             # Handle was closed or invalid - will create a new one below
 
