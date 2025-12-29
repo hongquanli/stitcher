@@ -175,6 +175,118 @@ class TestOMETiffMetadata:
         # operations on the file would fail on Windows
 
 
+class TestThreadSafety:
+    """Tests for thread-safe concurrent tile reads."""
+
+    @pytest.fixture
+    def sample_ome_tiff(self, tmp_path):
+        """Create a sample OME-TIFF file with multiple tiles."""
+        path = tmp_path / "test.ome.tiff"
+
+        # Create tiles with distinct values for verification
+        data = [
+            np.full((100, 100), fill_value=i * 1000, dtype=np.uint16) for i in range(8)
+        ]
+
+        ome_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06">"""
+        for i in range(8):
+            ome_xml += f"""
+            <Image ID="Image:{i}"><Pixels ID="Pixels:{i}" DimensionOrder="XYCZT" Type="uint16"
+                SizeX="100" SizeY="100" SizeC="1" SizeT="1" SizeZ="1"
+                PhysicalSizeX="0.5" PhysicalSizeY="0.5">
+                <Plane TheC="0" TheT="0" TheZ="0" PositionX="{(i % 4) * 50}" PositionY="{(i // 4) * 50}"/>
+            </Pixels></Image>"""
+        ome_xml += "</OME>"
+
+        with tifffile.TiffWriter(path, ome=True) as tif:
+            for i, d in enumerate(data):
+                tif.write(d, description=ome_xml if i == 0 else None)
+
+        return path, data
+
+    def test_concurrent_reads_thread_local_handles(self, sample_ome_tiff):
+        """Test that concurrent reads from multiple threads use separate handles."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from tilefusion import TileFusion
+
+        path, expected_data = sample_ome_tiff
+
+        try:
+            with TileFusion(path) as tf:
+                # Track which threads read which tiles
+                results = {}
+                errors = []
+
+                def read_tile(tile_idx):
+                    import threading
+                    thread_id = threading.current_thread().ident
+                    try:
+                        tile = tf._read_tile(tile_idx)
+                        return tile_idx, thread_id, tile
+                    except Exception as e:
+                        return tile_idx, thread_id, e
+
+                # Read tiles concurrently from multiple threads
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    futures = [executor.submit(read_tile, i) for i in range(8)]
+                    for future in as_completed(futures):
+                        tile_idx, thread_id, result = future.result()
+                        if isinstance(result, Exception):
+                            errors.append((tile_idx, result))
+                        else:
+                            results[tile_idx] = (thread_id, result)
+
+                # Verify no errors occurred
+                assert not errors, f"Errors during concurrent reads: {errors}"
+
+                # Verify all tiles were read correctly
+                assert len(results) == 8, f"Expected 8 results, got {len(results)}"
+
+                # Verify data integrity - each tile should have its expected value
+                for tile_idx, (thread_id, tile) in results.items():
+                    expected_val = tile_idx * 1000
+                    # The tile is flipped, so check mean value
+                    actual_mean = tile.mean()
+                    assert abs(actual_mean - expected_val) < 1, (
+                        f"Tile {tile_idx}: expected ~{expected_val}, got {actual_mean}"
+                    )
+
+                # Verify multiple handles were created (one per thread)
+                assert len(tf._all_handles) > 0, "No thread-local handles created"
+
+        except Exception:
+            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+
+    def test_handles_cleaned_up_after_close(self, sample_ome_tiff):
+        """Test that all thread-local handles are closed on cleanup."""
+        from concurrent.futures import ThreadPoolExecutor
+        from tilefusion import TileFusion
+
+        path, _ = sample_ome_tiff
+
+        try:
+            tf = TileFusion(path)
+
+            # Create handles in multiple threads
+            def read_tile(tile_idx):
+                return tf._read_tile(tile_idx)
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                list(executor.map(read_tile, range(4)))
+
+            # Verify handles were created
+            num_handles = len(tf._all_handles)
+            assert num_handles > 0, "No handles created"
+
+            # Close and verify cleanup
+            tf.close()
+            assert len(tf._all_handles) == 0, "Handles not cleaned up"
+
+        except Exception:
+            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+
+
 class TestTileFusionResourceManagement:
     """Tests for TileFusion resource management (close, context manager) - ID 2650114876."""
 

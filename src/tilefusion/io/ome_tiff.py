@@ -113,10 +113,12 @@ def read_ome_tiff_tile(
     arr : ndarray of shape (C, Y, X)
         Tile data as float32.
 
-    Note
-    ----
-    The cached handle can be used concurrently by multiple threads.
-    Reads from different series are thread-safe in practice.
+    Warning
+    -------
+    A single TiffFile handle is NOT thread-safe for concurrent reads.
+    On Windows, seek+read operations are not atomic, leading to data
+    corruption. Use separate handles per thread (TileFusion handles
+    this automatically via thread-local storage).
     """
     if tiff_handle is not None:
         arr = tiff_handle.series[tile_idx].asarray()
@@ -158,10 +160,12 @@ def read_ome_tiff_region(
     arr : ndarray of shape (C, h, w)
         Tile region as float32.
 
-    Note
-    ----
-    The cached handle can be used concurrently by multiple threads.
-    Reads from different series are thread-safe in practice.
+    Warning
+    -------
+    A single TiffFile handle is NOT thread-safe for concurrent reads.
+    On Windows, seek+read operations are not atomic, leading to data
+    corruption. Use separate handles per thread (TileFusion handles
+    this automatically via thread-local storage).
     """
     if tiff_handle is not None:
         arr = tiff_handle.series[tile_idx].asarray()

@@ -6,6 +6,7 @@ Main orchestration class that composes registration, fusion, optimization, and I
 
 import gc
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -217,6 +218,11 @@ class TileFusion:
         self.fused_ts = None
         self.center = None
 
+        # Thread-local storage for TiffFile handles (thread-safe concurrent access)
+        self._thread_local = threading.local()
+        self._handles_lock = threading.Lock()
+        self._all_handles: List = []  # Track all handles for cleanup
+
     def close(self) -> None:
         """
         Close any open file handles to release resources.
@@ -226,6 +232,20 @@ class TileFusion:
         for automatic cleanup. Important for OME-TIFF inputs where file
         handles are kept open for performance.
         """
+        # Close all thread-local handles
+        with self._handles_lock:
+            for handle in self._all_handles:
+                try:
+                    handle.close()
+                except Exception:
+                    pass  # Best-effort cleanup
+            self._all_handles.clear()
+
+        # Clear this thread's handle reference
+        if hasattr(self._thread_local, "tiff_handle"):
+            self._thread_local.tiff_handle = None
+
+        # Close the original metadata handle (backward compatibility)
         if self._metadata is not None and "tiff_handle" in self._metadata:
             handle = self._metadata.pop("tiff_handle", None)
             if handle is not None:
@@ -248,6 +268,43 @@ class TileFusion:
             self.close()
         except AttributeError:
             pass  # Object may be partially initialized
+
+    def _get_thread_local_handle(self):
+        """
+        Get or create a thread-local TiffFile handle for the current thread.
+
+        Each thread gets its own file handle to ensure thread-safe concurrent
+        reads. This avoids race conditions that can occur when multiple threads
+        share a single file descriptor (seek + read is not atomic on Windows).
+
+        Returns
+        -------
+        tifffile.TiffFile or None
+            Thread-local handle for OME-TIFF files, None for other formats.
+        """
+        # Only applies to OME-TIFF format (not zarr, individual tiffs, etc.)
+        if (
+            self._is_zarr_format
+            or self._is_individual_tiffs_format
+            or self._is_ome_tiff_tiles_format
+        ):
+            return None
+
+        # Check if this thread already has a handle
+        if hasattr(self._thread_local, "tiff_handle") and self._thread_local.tiff_handle is not None:
+            return self._thread_local.tiff_handle
+
+        # Create a new handle for this thread
+        import tifffile
+
+        handle = tifffile.TiffFile(self.tiff_path)
+        self._thread_local.tiff_handle = handle
+
+        # Track for cleanup
+        with self._handles_lock:
+            self._all_handles.append(handle)
+
+        return handle
 
     # -------------------------------------------------------------------------
     # Properties
@@ -351,7 +408,9 @@ class TileFusion:
                 time_idx=time_idx,
             )
         else:
-            return read_ome_tiff_tile(self.tiff_path, tile_idx, self._metadata.get("tiff_handle"))
+            # Use thread-local handle for thread-safe concurrent reads
+            handle = self._get_thread_local_handle()
+            return read_ome_tiff_tile(self.tiff_path, tile_idx, handle)
 
     def _read_tile_region(
         self,
@@ -396,9 +455,9 @@ class TileFusion:
                 time_idx=time_idx,
             )
         else:
-            return read_ome_tiff_region(
-                self.tiff_path, tile_idx, y_slice, x_slice, self._metadata.get("tiff_handle")
-            )
+            # Use thread-local handle for thread-safe concurrent reads
+            handle = self._get_thread_local_handle()
+            return read_ome_tiff_region(self.tiff_path, tile_idx, y_slice, x_slice, handle)
 
     # -------------------------------------------------------------------------
     # Registration
