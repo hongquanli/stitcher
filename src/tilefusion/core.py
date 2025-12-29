@@ -217,6 +217,18 @@ class TileFusion:
         self.fused_ts = None
         self.center = None
 
+    def close(self) -> None:
+        """Close any open file handles to release resources."""
+        if self._metadata and "tiff_handle" in self._metadata:
+            handle = self._metadata.get("tiff_handle")
+            if handle is not None:
+                handle.close()
+                self._metadata["tiff_handle"] = None
+
+    def __del__(self):
+        """Destructor to ensure file handles are closed."""
+        self.close()
+
     # -------------------------------------------------------------------------
     # Properties
     # -------------------------------------------------------------------------

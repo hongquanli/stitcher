@@ -34,56 +34,61 @@ def load_ome_tiff_metadata(tiff_path: Path) -> Dict[str, Any]:
         - tiff_handle: tifffile.TiffFile
             Open TIFF file handle kept for fast repeated access. The caller is
             responsible for closing this handle by calling ``tiff_handle.close()``
-            when it is no longer needed to avoid resource leaks.
+            when it is no longer needed to avoid resource leaks. The handle
+            remains valid until it is explicitly closed, or until a higher-level
+            context manager (if used) closes it on your behalf.
     """
     # Keep file handle open for fast repeated access
     tif = tifffile.TiffFile(tiff_path)
 
-    if not tif.ome_metadata:
+    try:
+        if not tif.ome_metadata:
+            raise ValueError("TIFF file does not contain OME metadata")
+
+        root = ET.fromstring(tif.ome_metadata)
+        ns = {"ome": "http://www.openmicroscopy.org/Schemas/OME/2016-06"}
+        images = root.findall(".//ome:Image", ns)
+
+        n_tiles = len(images)
+        n_series = len(tif.series)
+
+        first_series = tif.series[0]
+        Y, X = first_series.shape[-2:]
+        channels = 1
+        time_dim = 1
+        position_dim = n_tiles
+
+        first_pixels = images[0].find("ome:Pixels", ns)
+        px_x = float(first_pixels.get("PhysicalSizeX", 1.0))
+        px_y = float(first_pixels.get("PhysicalSizeY", 1.0))
+        pixel_size = (px_y, px_x)
+
+        tile_positions = []
+        for img in images:
+            pixels = img.find("ome:Pixels", ns)
+            planes = pixels.findall("ome:Plane", ns)
+            if planes:
+                p = planes[0]
+                x = float(p.get("PositionX", 0))
+                y = float(p.get("PositionY", 0))
+                tile_positions.append((y, x))
+            else:
+                tile_positions.append((0.0, 0.0))
+
+        return {
+            "n_tiles": n_tiles,
+            "n_series": n_series,
+            "shape": (Y, X),
+            "channels": channels,
+            "time_dim": time_dim,
+            "position_dim": position_dim,
+            "pixel_size": pixel_size,
+            "tile_positions": tile_positions,
+            "tiff_handle": tif,
+        }
+    except Exception:
         tif.close()
-        raise ValueError("TIFF file does not contain OME metadata")
-
-    root = ET.fromstring(tif.ome_metadata)
-    ns = {"ome": "http://www.openmicroscopy.org/Schemas/OME/2016-06"}
-    images = root.findall(".//ome:Image", ns)
-
-    n_tiles = len(images)
-    n_series = len(tif.series)
-
-    first_series = tif.series[0]
-    Y, X = first_series.shape[-2:]
-    channels = 1
-    time_dim = 1
-    position_dim = n_tiles
-
-    first_pixels = images[0].find("ome:Pixels", ns)
-    px_x = float(first_pixels.get("PhysicalSizeX", 1.0))
-    px_y = float(first_pixels.get("PhysicalSizeY", 1.0))
-    pixel_size = (px_y, px_x)
-
-    tile_positions = []
-    for img in images:
-        pixels = img.find("ome:Pixels", ns)
-        planes = pixels.findall("ome:Plane", ns)
-        if planes:
-            p = planes[0]
-            x = float(p.get("PositionX", 0))
-            y = float(p.get("PositionY", 0))
-            tile_positions.append((y, x))
-        else:
-            tile_positions.append((0.0, 0.0))
-
-    return {
-        "n_tiles": n_tiles,
-        "n_series": n_series,
-        "shape": (Y, X),
-        "channels": channels,
-        "time_dim": time_dim,
-        "position_dim": position_dim,
-        "pixel_size": pixel_size,
-        "tile_positions": tile_positions,
-        "tiff_handle": tif,
-    }
+        raise
 
 
 def read_ome_tiff_tile(
