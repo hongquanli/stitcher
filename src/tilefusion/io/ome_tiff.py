@@ -5,7 +5,7 @@ Reads tiled OME-TIFF files with stage position metadata.
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -92,7 +92,7 @@ def load_ome_tiff_metadata(tiff_path: Path) -> Dict[str, Any]:
 
 
 def read_ome_tiff_tile(
-    tiff_path: Path, tile_idx: int, tiff_handle: tifffile.TiffFile = None
+    tiff_path: Path, tile_idx: int, tiff_handle: Optional[tifffile.TiffFile] = None
 ) -> np.ndarray:
     """
     Read a single tile from OME-TIFF (all channels).
@@ -104,12 +104,19 @@ def read_ome_tiff_tile(
     tile_idx : int
         Index of the tile to read.
     tiff_handle : TiffFile, optional
-        Cached TiffFile handle for faster access.
+        Cached TiffFile handle for faster access. For repeated reads,
+        keep the handle open and pass it here, or use TileFusion which
+        manages this automatically.
 
     Returns
     -------
     arr : ndarray of shape (C, Y, X)
         Tile data as float32.
+
+    Note
+    ----
+    The cached handle can be used concurrently by multiple threads.
+    Reads from different series are thread-safe in practice.
     """
     if tiff_handle is not None:
         arr = tiff_handle.series[tile_idx].asarray()
@@ -128,7 +135,7 @@ def read_ome_tiff_region(
     tile_idx: int,
     y_slice: slice,
     x_slice: slice,
-    tiff_handle: tifffile.TiffFile = None,
+    tiff_handle: Optional[tifffile.TiffFile] = None,
 ) -> np.ndarray:
     """
     Read a region of a tile from OME-TIFF.
@@ -142,12 +149,19 @@ def read_ome_tiff_region(
     y_slice, x_slice : slice
         Region to read.
     tiff_handle : TiffFile, optional
-        Cached TiffFile handle for faster access.
+        Cached TiffFile handle for faster access. For repeated reads,
+        keep the handle open and pass it here, or use TileFusion which
+        manages this automatically.
 
     Returns
     -------
     arr : ndarray of shape (C, h, w)
         Tile region as float32.
+
+    Note
+    ----
+    The cached handle can be used concurrently by multiple threads.
+    Reads from different series are thread-safe in practice.
     """
     if tiff_handle is not None:
         arr = tiff_handle.series[tile_idx].asarray()

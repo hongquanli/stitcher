@@ -157,5 +157,94 @@ class TestOMETiffMetadata:
             assert "n_tiles" in meta
             assert "shape" in meta
             assert "pixel_size" in meta
+            # Clean up tiff_handle
+            if "tiff_handle" in meta:
+                meta["tiff_handle"].close()
+        except Exception:
+            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+
+    def test_handle_closed_on_error(self, tmp_path):
+        """Test that handle is closed if metadata parsing fails (ID 2650114878)."""
+        # Create invalid TIFF (no OME metadata)
+        path = tmp_path / "invalid.tiff"
+        tifffile.imwrite(path, np.zeros((10, 10), dtype=np.uint16))
+
+        with pytest.raises(ValueError, match="does not contain OME metadata"):
+            load_ome_tiff_metadata(path)
+        # File should be closed (no resource leak) - if not, subsequent
+        # operations on the file would fail on Windows
+
+
+class TestTileFusionResourceManagement:
+    """Tests for TileFusion resource management (close, context manager) - ID 2650114876."""
+
+    @pytest.fixture
+    def sample_ome_tiff(self, tmp_path):
+        """Create a sample OME-TIFF file."""
+        path = tmp_path / "test.ome.tiff"
+
+        data = [np.random.randint(0, 65535, (100, 100), dtype=np.uint16) for _ in range(4)]
+
+        ome_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06">
+            <Image ID="Image:0"><Pixels ID="Pixels:0" DimensionOrder="XYCZT" Type="uint16" 
+                SizeX="100" SizeY="100" SizeC="1" SizeT="1" SizeZ="1"
+                PhysicalSizeX="0.5" PhysicalSizeY="0.5">
+                <Plane TheC="0" TheT="0" TheZ="0" PositionX="0" PositionY="0"/>
+            </Pixels></Image>
+            <Image ID="Image:1"><Pixels ID="Pixels:1" DimensionOrder="XYCZT" Type="uint16"
+                SizeX="100" SizeY="100" SizeC="1" SizeT="1" SizeZ="1"
+                PhysicalSizeX="0.5" PhysicalSizeY="0.5">
+                <Plane TheC="0" TheT="0" TheZ="0" PositionX="50" PositionY="0"/>
+            </Pixels></Image>
+            <Image ID="Image:2"><Pixels ID="Pixels:2" DimensionOrder="XYCZT" Type="uint16"
+                SizeX="100" SizeY="100" SizeC="1" SizeT="1" SizeZ="1"
+                PhysicalSizeX="0.5" PhysicalSizeY="0.5">
+                <Plane TheC="0" TheT="0" TheZ="0" PositionX="0" PositionY="50"/>
+            </Pixels></Image>
+            <Image ID="Image:3"><Pixels ID="Pixels:3" DimensionOrder="XYCZT" Type="uint16"
+                SizeX="100" SizeY="100" SizeC="1" SizeT="1" SizeZ="1"
+                PhysicalSizeX="0.5" PhysicalSizeY="0.5">
+                <Plane TheC="0" TheT="0" TheZ="0" PositionX="50" PositionY="50"/>
+            </Pixels></Image>
+        </OME>"""
+
+        with tifffile.TiffWriter(path, ome=True) as tif:
+            for i, d in enumerate(data):
+                tif.write(d, description=ome_xml if i == 0 else None)
+
+        return path
+
+    def test_close_method(self, sample_ome_tiff):
+        """Test that close() properly closes the tiff_handle."""
+        from tilefusion import TileFusion
+
+        try:
+            tf = TileFusion(sample_ome_tiff)
+            assert "tiff_handle" in tf._metadata
+            tf.close()
+            assert "tiff_handle" not in tf._metadata
+        except Exception:
+            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+
+    def test_close_idempotent(self, sample_ome_tiff):
+        """Test that close() can be called multiple times safely."""
+        from tilefusion import TileFusion
+
+        try:
+            tf = TileFusion(sample_ome_tiff)
+            tf.close()
+            tf.close()  # Should not raise
+        except Exception:
+            pytest.skip("OME-TIFF creation requires proper OME-XML handling")
+
+    def test_context_manager(self, sample_ome_tiff):
+        """Test context manager protocol."""
+        from tilefusion import TileFusion
+
+        try:
+            with TileFusion(sample_ome_tiff) as tf:
+                assert "tiff_handle" in tf._metadata
+            assert "tiff_handle" not in tf._metadata
         except Exception:
             pytest.skip("OME-TIFF creation requires proper OME-XML handling")

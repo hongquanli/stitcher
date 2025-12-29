@@ -229,7 +229,10 @@ class TileFusion:
         if self._metadata is not None and "tiff_handle" in self._metadata:
             handle = self._metadata.pop("tiff_handle", None)
             if handle is not None:
-                handle.close()
+                try:
+                    handle.close()
+                except Exception:
+                    pass  # Best-effort cleanup
 
     def __enter__(self) -> "TileFusion":
         """Enter the runtime context."""
@@ -241,7 +244,10 @@ class TileFusion:
 
     def __del__(self):
         """Destructor to ensure file handles are closed."""
-        self.close()
+        try:
+            self.close()
+        except AttributeError:
+            pass  # Object may be partially initialized
 
     # -------------------------------------------------------------------------
     # Properties
