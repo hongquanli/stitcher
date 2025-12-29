@@ -5,7 +5,7 @@ Reads tiled OME-TIFF files with stage position metadata.
 """
 
 from pathlib import Path
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -31,40 +31,47 @@ def load_ome_tiff_metadata(tiff_path: Path) -> Dict[str, Any]:
         - channels: int
         - pixel_size: (py, px)
         - tile_positions: list of (y, x) tuples
+        - tiff_handle: tifffile.TiffFile
+            Open TIFF file handle kept for fast repeated access. The caller is
+            responsible for closing this handle by calling ``tiff_handle.close()``
+            when it is no longer needed to avoid resource leaks.
     """
-    with tifffile.TiffFile(tiff_path) as tif:
-        if not tif.ome_metadata:
-            raise ValueError("TIFF file does not contain OME metadata")
+    # Keep file handle open for fast repeated access
+    tif = tifffile.TiffFile(tiff_path)
 
-        root = ET.fromstring(tif.ome_metadata)
-        ns = {"ome": "http://www.openmicroscopy.org/Schemas/OME/2016-06"}
-        images = root.findall(".//ome:Image", ns)
+    if not tif.ome_metadata:
+        tif.close()
+        raise ValueError("TIFF file does not contain OME metadata")
 
-        n_tiles = len(images)
-        n_series = len(tif.series)
+    root = ET.fromstring(tif.ome_metadata)
+    ns = {"ome": "http://www.openmicroscopy.org/Schemas/OME/2016-06"}
+    images = root.findall(".//ome:Image", ns)
 
-        first_series = tif.series[0]
-        Y, X = first_series.shape[-2:]
-        channels = 1
-        time_dim = 1
-        position_dim = n_tiles
+    n_tiles = len(images)
+    n_series = len(tif.series)
 
-        first_pixels = images[0].find("ome:Pixels", ns)
-        px_x = float(first_pixels.get("PhysicalSizeX", 1.0))
-        px_y = float(first_pixels.get("PhysicalSizeY", 1.0))
-        pixel_size = (px_y, px_x)
+    first_series = tif.series[0]
+    Y, X = first_series.shape[-2:]
+    channels = 1
+    time_dim = 1
+    position_dim = n_tiles
 
-        tile_positions = []
-        for img in images:
-            pixels = img.find("ome:Pixels", ns)
-            planes = pixels.findall("ome:Plane", ns)
-            if planes:
-                p = planes[0]
-                x = float(p.get("PositionX", 0))
-                y = float(p.get("PositionY", 0))
-                tile_positions.append((y, x))
-            else:
-                tile_positions.append((0.0, 0.0))
+    first_pixels = images[0].find("ome:Pixels", ns)
+    px_x = float(first_pixels.get("PhysicalSizeX", 1.0))
+    px_y = float(first_pixels.get("PhysicalSizeY", 1.0))
+    pixel_size = (px_y, px_x)
+
+    tile_positions = []
+    for img in images:
+        pixels = img.find("ome:Pixels", ns)
+        planes = pixels.findall("ome:Plane", ns)
+        if planes:
+            p = planes[0]
+            x = float(p.get("PositionX", 0))
+            y = float(p.get("PositionY", 0))
+            tile_positions.append((y, x))
+        else:
+            tile_positions.append((0.0, 0.0))
 
     return {
         "n_tiles": n_tiles,
@@ -75,10 +82,13 @@ def load_ome_tiff_metadata(tiff_path: Path) -> Dict[str, Any]:
         "position_dim": position_dim,
         "pixel_size": pixel_size,
         "tile_positions": tile_positions,
+        "tiff_handle": tif,
     }
 
 
-def read_ome_tiff_tile(tiff_path: Path, tile_idx: int) -> np.ndarray:
+def read_ome_tiff_tile(
+    tiff_path: Path, tile_idx: int, tiff_handle: tifffile.TiffFile = None
+) -> np.ndarray:
     """
     Read a single tile from OME-TIFF (all channels).
 
@@ -88,14 +98,19 @@ def read_ome_tiff_tile(tiff_path: Path, tile_idx: int) -> np.ndarray:
         Path to the OME-TIFF file.
     tile_idx : int
         Index of the tile to read.
+    tiff_handle : TiffFile, optional
+        Cached TiffFile handle for faster access.
 
     Returns
     -------
     arr : ndarray of shape (C, Y, X)
         Tile data as float32.
     """
-    with tifffile.TiffFile(tiff_path) as tif:
-        arr = tif.series[tile_idx].asarray()
+    if tiff_handle is not None:
+        arr = tiff_handle.series[tile_idx].asarray()
+    else:
+        with tifffile.TiffFile(tiff_path) as tif:
+            arr = tif.series[tile_idx].asarray()
     if arr.ndim == 2:
         arr = arr[np.newaxis, :, :]
     # Flip along Y axis to correct orientation
@@ -108,6 +123,7 @@ def read_ome_tiff_region(
     tile_idx: int,
     y_slice: slice,
     x_slice: slice,
+    tiff_handle: tifffile.TiffFile = None,
 ) -> np.ndarray:
     """
     Read a region of a tile from OME-TIFF.
@@ -120,14 +136,19 @@ def read_ome_tiff_region(
         Index of the tile.
     y_slice, x_slice : slice
         Region to read.
+    tiff_handle : TiffFile, optional
+        Cached TiffFile handle for faster access.
 
     Returns
     -------
     arr : ndarray of shape (C, h, w)
         Tile region as float32.
     """
-    with tifffile.TiffFile(tiff_path) as tif:
-        arr = tif.series[tile_idx].asarray()
+    if tiff_handle is not None:
+        arr = tiff_handle.series[tile_idx].asarray()
+    else:
+        with tifffile.TiffFile(tiff_path) as tif:
+            arr = tif.series[tile_idx].asarray()
     if arr.ndim == 2:
         arr = arr[np.newaxis, :, :]
     # Flip along Y axis to correct orientation

@@ -319,7 +319,7 @@ class TileFusion:
                 time_idx=time_idx,
             )
         else:
-            return read_ome_tiff_tile(self.tiff_path, tile_idx)
+            return read_ome_tiff_tile(self.tiff_path, tile_idx, self._metadata.get("tiff_handle"))
 
     def _read_tile_region(
         self,
@@ -364,7 +364,9 @@ class TileFusion:
                 time_idx=time_idx,
             )
         else:
-            return read_ome_tiff_region(self.tiff_path, tile_idx, y_slice, x_slice)
+            return read_ome_tiff_region(
+                self.tiff_path, tile_idx, y_slice, x_slice, self._metadata.get("tiff_handle")
+            )
 
     # -------------------------------------------------------------------------
     # Registration
