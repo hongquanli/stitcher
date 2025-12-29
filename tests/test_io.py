@@ -275,7 +275,6 @@ class TestThreadSafety:
         from tilefusion import TileFusion
 
         path, _ = sample_ome_tiff
-        tf = None
 
         try:
             tf = TileFusion(path)
