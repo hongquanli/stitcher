@@ -243,6 +243,26 @@ class TileFusion:
         ``close()`` while other threads are still reading tiles will close
         their handles mid-operation, causing errors.
         """
+        # THREAD SAFETY NOTE:
+        # This method is NOT safe to call while other threads are actively reading.
+        # The design assumes close() is called only after all work is complete.
+        #
+        # Race condition scenario:
+        #   1. Thread A calls _get_thread_local_handle(), gets handle
+        #   2. Main thread calls close(), closes all handles
+        #   3. Thread A calls handle.series[idx].asarray() -> ERROR (closed file)
+        #
+        # We chose documentation over a complex fix (reference counting, read-write
+        # locks) because:
+        #   - The context manager pattern naturally prevents this issue
+        #   - Adding synchronization would hurt performance for the common case
+        #   - Users explicitly calling close() should know their threads are done
+        #
+        # Safe usage patterns:
+        #   - Use context manager: with TileFusion(...) as tf: ...
+        #   - Call close() only after ThreadPoolExecutor.shutdown(wait=True)
+        #   - Use single-threaded access when manually managing lifecycle
+
         # Close all thread-local handles
         with self._handles_lock:
             for handle in self._all_handles:
