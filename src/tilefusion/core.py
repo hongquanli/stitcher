@@ -526,8 +526,9 @@ class TileFusion:
         Parameters
         ----------
         parallel : bool, optional
-            If None (default), auto-detects: enabled for individual TIFFs,
-            disabled for single-file OME-TIFF (due to I/O contention).
+            If None (default), auto-detects: enabled for multi-file formats
+            (Zarr, individual TIFFs, OME-TIFF tiles), disabled for single-file
+            OME-TIFF (due to I/O contention).
         """
         df = downsample_factors or self.downsample_factors
         sw = ssim_window or self.ssim_window
