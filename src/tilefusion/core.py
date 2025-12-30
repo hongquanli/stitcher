@@ -583,7 +583,9 @@ class TileFusion:
         n_pairs = len(pair_bounds)
         n_workers = min(cpu_count(), n_pairs, self._max_workers)
         io_workers = min(n_pairs, self._max_workers)
-        print(f"Parallel registration: {n_pairs} pairs, {n_workers} compute workers, {io_workers} I/O workers")
+        print(
+            f"Parallel registration: {n_pairs} pairs, {n_workers} compute workers, {io_workers} I/O workers"
+        )
 
         # Estimate memory needed based on actual overlap size
         if pair_bounds:
@@ -620,7 +622,9 @@ class TileFusion:
             batch_size = max(16, ram_budget // avg_pair_bytes)
             n_batches = (n_pairs + batch_size - 1) // batch_size
 
-            print(f"Processing {n_pairs} pairs in {n_batches} batches (RAM limited, {n_workers} workers)")
+            print(
+                f"Processing {n_pairs} pairs in {n_batches} batches (RAM limited, {n_workers} workers)"
+            )
 
             for batch_idx in range(n_batches):
                 start = batch_idx * batch_size
@@ -659,9 +663,7 @@ class TileFusion:
                 patches = list(io_executor.map(read_pair_patches, pair_bounds))
 
             work_items = [
-                (i, j, pi, pj, df, sw, th, max_shift)
-                for i, j, pi, pj in patches
-                if pi is not None
+                (i, j, pi, pj, df, sw, th, max_shift) for i, j, pi, pj in patches if pi is not None
             ]
 
             with ThreadPoolExecutor(max_workers=n_workers) as executor:
