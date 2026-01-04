@@ -29,7 +29,8 @@ def calculate_flatfield(
     Parameters
     ----------
     tiles : list of ndarray
-        List of tile images, each with shape (C, Y, X).
+        List of tile images, each with shape (C, Y, X) or (Y, X) for single-channel.
+        2D arrays are automatically converted to 3D with shape (1, Y, X).
     use_darkfield : bool
         Whether to also compute darkfield correction.
     constant_darkfield : bool
@@ -59,6 +60,9 @@ def calculate_flatfield(
 
     if not tiles:
         raise ValueError("tiles list is empty")
+
+    # Support 2D (Y, X) arrays by converting to 3D (1, Y, X)
+    tiles = [t[np.newaxis, ...] if t.ndim == 2 else t for t in tiles]
 
     # Get shape from first tile
     n_channels = tiles[0].shape[0]
@@ -140,13 +144,14 @@ def apply_flatfield(
             f"Tile shape {tile.shape} does not match darkfield shape {darkfield.shape}"
         )
 
-    # Avoid division by zero
-    flatfield_safe = np.where(flatfield > 1e-6, flatfield, 1.0)
+    # Convert to float32 to avoid underflow with unsigned integer types
+    tile_f = tile.astype(np.float32)
+    flatfield_safe = np.where(flatfield > 1e-6, flatfield, 1.0).astype(np.float32)
 
     if darkfield is not None:
-        corrected = (tile - darkfield) / flatfield_safe
+        corrected = (tile_f - darkfield.astype(np.float32)) / flatfield_safe
     else:
-        corrected = tile / flatfield_safe
+        corrected = tile_f / flatfield_safe
 
     return corrected.astype(tile.dtype)
 
@@ -196,13 +201,14 @@ def apply_flatfield_region(
         ff_region = flatfield[:, y_slice, x_slice]
         df_region = darkfield[:, y_slice, x_slice] if darkfield is not None else None
 
-    # Avoid division by zero
-    ff_safe = np.where(ff_region > 1e-6, ff_region, 1.0)
+    # Convert to float32 to avoid underflow with unsigned integer types
+    region_f = region.astype(np.float32)
+    ff_safe = np.where(ff_region > 1e-6, ff_region, 1.0).astype(np.float32)
 
     if df_region is not None:
-        corrected = (region - df_region) / ff_safe
+        corrected = (region_f - df_region.astype(np.float32)) / ff_safe
     else:
-        corrected = region / ff_safe
+        corrected = region_f / ff_safe
 
     return corrected.astype(region.dtype)
 
