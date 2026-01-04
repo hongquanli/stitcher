@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from tilefusion.utils import match_histograms, CUDA_AVAILABLE
+from tilefusion.utils import match_histograms
 from skimage.exposure import match_histograms as skimage_match
 
 

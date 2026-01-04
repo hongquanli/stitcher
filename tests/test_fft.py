@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from tilefusion.utils import phase_cross_correlation, CUDA_AVAILABLE
+from tilefusion.utils import phase_cross_correlation
 from skimage.registration import phase_cross_correlation as skimage_pcc
 
 

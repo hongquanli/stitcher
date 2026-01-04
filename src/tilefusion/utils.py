@@ -292,7 +292,7 @@ def _match_histograms_torch(image: np.ndarray, reference: np.ndarray) -> np.ndar
     ref = torch.from_numpy(reference.astype(np.float32)).cuda().flatten()
 
     # Get sorted indices
-    img_sorted, img_indices = torch.sort(img)
+    _, img_indices = torch.sort(img)
     ref_sorted, _ = torch.sort(ref)
 
     # Create inverse mapping (rank of each pixel)

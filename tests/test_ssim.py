@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from tilefusion.utils import compute_ssim, CUDA_AVAILABLE
+from tilefusion.utils import compute_ssim
 from skimage.metrics import structural_similarity as skimage_ssim
 
 

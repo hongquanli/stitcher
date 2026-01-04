@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from tilefusion.utils import shift_array, CUDA_AVAILABLE
+from tilefusion.utils import shift_array
 from scipy.ndimage import shift as scipy_shift
 
 
