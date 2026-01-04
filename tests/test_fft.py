@@ -2,6 +2,7 @@
 
 import numpy as np
 import sys
+
 sys.path.insert(0, "src")
 
 from tilefusion.utils import phase_cross_correlation, CUDA_AVAILABLE

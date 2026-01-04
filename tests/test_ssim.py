@@ -1,6 +1,8 @@
 """Unit tests for GPU SSIM."""
+
 import numpy as np
 import sys
+
 sys.path.insert(0, "src")
 
 from tilefusion.utils import compute_ssim, CUDA_AVAILABLE

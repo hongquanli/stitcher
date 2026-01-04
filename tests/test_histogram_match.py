@@ -1,6 +1,8 @@
 """Unit tests for GPU histogram matching."""
+
 import numpy as np
 import sys
+
 sys.path.insert(0, "src")
 
 from tilefusion.utils import match_histograms, CUDA_AVAILABLE

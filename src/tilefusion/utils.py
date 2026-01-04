@@ -11,6 +11,7 @@ import numpy as np
 try:
     import torch
     import torch.nn.functional as F
+
     TORCH_AVAILABLE = True
     CUDA_AVAILABLE = torch.cuda.is_available()
 except ImportError:
@@ -35,6 +36,7 @@ cp = None
 # =============================================================================
 # Phase Cross-Correlation (GPU FFT)
 # =============================================================================
+
 
 def phase_cross_correlation(reference_image, moving_image, upsample_factor=1, **kwargs):
     """
@@ -66,8 +68,9 @@ def phase_cross_correlation(reference_image, moving_image, upsample_factor=1, **
     return _phase_cross_correlation_cpu(ref_np, mov_np, upsample_factor=upsample_factor, **kwargs)
 
 
-def _phase_cross_correlation_torch(reference_image: np.ndarray, moving_image: np.ndarray,
-                                    upsample_factor: int = 1) -> tuple:
+def _phase_cross_correlation_torch(
+    reference_image: np.ndarray, moving_image: np.ndarray, upsample_factor: int = 1
+) -> tuple:
     """GPU phase cross-correlation using torch FFT."""
     ref = torch.from_numpy(reference_image.astype(np.float32)).cuda()
     mov = torch.from_numpy(moving_image.astype(np.float32)).cuda()
@@ -121,14 +124,22 @@ def _subpixel_refine_torch(correlation, peak_y, peak_x, h, w):
     # Y direction parabolic fit
     if neighborhood[0, 1].item() != center_val or neighborhood[2, 1].item() != center_val:
         denom = 2 * (2 * center_val - neighborhood[0, 1].item() - neighborhood[2, 1].item())
-        dy = (neighborhood[0, 1].item() - neighborhood[2, 1].item()) / denom if abs(denom) > 1e-10 else 0.0
+        dy = (
+            (neighborhood[0, 1].item() - neighborhood[2, 1].item()) / denom
+            if abs(denom) > 1e-10
+            else 0.0
+        )
     else:
         dy = 0.0
 
     # X direction parabolic fit
     if neighborhood[1, 0].item() != center_val or neighborhood[1, 2].item() != center_val:
         denom = 2 * (2 * center_val - neighborhood[1, 0].item() - neighborhood[1, 2].item())
-        dx = (neighborhood[1, 0].item() - neighborhood[1, 2].item()) / denom if abs(denom) > 1e-10 else 0.0
+        dx = (
+            (neighborhood[1, 0].item() - neighborhood[1, 2].item()) / denom
+            if abs(denom) > 1e-10
+            else 0.0
+        )
     else:
         dx = 0.0
 
@@ -141,6 +152,7 @@ def _subpixel_refine_torch(correlation, peak_y, peak_x, h, w):
 # =============================================================================
 # Shift Array (GPU grid_sample)
 # =============================================================================
+
 
 def shift_array(arr, shift_vec):
     """
@@ -200,6 +212,7 @@ def _shift_array_torch(arr: np.ndarray, shift_vec) -> np.ndarray:
 # Match Histograms (GPU sort/quantile)
 # =============================================================================
 
+
 def match_histograms(image, reference):
     """
     Match histogram of image to reference using GPU (torch) or CPU (skimage).
@@ -256,6 +269,7 @@ def _match_histograms_torch(image: np.ndarray, reference: np.ndarray) -> np.ndar
 # Block Reduce (GPU avg_pool2d)
 # =============================================================================
 
+
 def block_reduce(arr, block_size, func=np.mean):
     """
     Block reduce array using GPU (torch) or CPU (skimage).
@@ -304,6 +318,7 @@ def _block_reduce_torch(arr: np.ndarray, block_size: tuple) -> np.ndarray:
 # Compute SSIM (GPU conv2d)
 # =============================================================================
 
+
 def compute_ssim(arr1, arr2, win_size: int) -> float:
     """
     Compute SSIM using GPU (torch) or CPU (skimage).
@@ -335,7 +350,9 @@ def compute_ssim(arr1, arr2, win_size: int) -> float:
     return float(_ssim_cpu(arr1_np, arr2_np, win_size=win_size, data_range=data_range))
 
 
-def _compute_ssim_torch(arr1: np.ndarray, arr2: np.ndarray, win_size: int, data_range: float) -> float:
+def _compute_ssim_torch(
+    arr1: np.ndarray, arr2: np.ndarray, win_size: int, data_range: float
+) -> float:
     """GPU SSIM using torch conv2d for local statistics."""
     C1 = (0.01 * data_range) ** 2
     C2 = (0.03 * data_range) ** 2
@@ -351,18 +368,19 @@ def _compute_ssim_torch(arr1: np.ndarray, arr2: np.ndarray, win_size: int, data_
     mu1 = F.conv2d(img1, window, padding=win_size // 2)
     mu2 = F.conv2d(img2, window, padding=win_size // 2)
 
-    mu1_sq = mu1 ** 2
-    mu2_sq = mu2 ** 2
+    mu1_sq = mu1**2
+    mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
     # Compute local variances and covariance
-    sigma1_sq = F.conv2d(img1 ** 2, window, padding=win_size // 2) - mu1_sq
-    sigma2_sq = F.conv2d(img2 ** 2, window, padding=win_size // 2) - mu2_sq
+    sigma1_sq = F.conv2d(img1**2, window, padding=win_size // 2) - mu1_sq
+    sigma2_sq = F.conv2d(img2**2, window, padding=win_size // 2) - mu2_sq
     sigma12 = F.conv2d(img1 * img2, window, padding=win_size // 2) - mu1_mu2
 
     # SSIM formula
-    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
-               ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / (
+        (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
+    )
 
     return float(ssim_map.mean().cpu())
 
@@ -370,6 +388,7 @@ def _compute_ssim_torch(arr1: np.ndarray, arr2: np.ndarray, win_size: int, data_
 # =============================================================================
 # Utility Functions
 # =============================================================================
+
 
 def make_1d_profile(length: int, blend: int) -> np.ndarray:
     """

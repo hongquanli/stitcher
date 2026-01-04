@@ -5,6 +5,7 @@ import pytest
 from skimage.measure import block_reduce as skimage_block_reduce
 
 import sys
+
 sys.path.insert(0, "src")
 
 from tilefusion.utils import block_reduce, CUDA_AVAILABLE
