@@ -217,14 +217,16 @@ def shift_array(
     if CUDA_AVAILABLE and arr_np.ndim == 2:
         result = _shift_array_torch(arr_np, shift_vec)
     else:
-        result = _shift_cpu(arr_np, shift=shift_vec, order=1, prefilter=False)
+        # Compute in float for consistency with GPU path
+        arr_float = arr_np.astype(np.float64)
+        result = _shift_cpu(arr_float, shift=shift_vec, order=1, prefilter=False)
 
     if preserve_dtype and result.dtype != original_dtype:
         return result.astype(original_dtype)
     return result
 
 
-def _shift_array_torch(arr: np.ndarray, shift_vec) -> np.ndarray:
+def _shift_array_torch(arr: np.ndarray, shift_vec: tuple[float, float]) -> np.ndarray:
     """GPU shift using torch.nn.functional.grid_sample."""
     h, w = arr.shape
 
@@ -493,7 +495,7 @@ def make_1d_profile(length: int, blend: int) -> np.ndarray:
 
 def to_numpy(arr) -> np.ndarray:
     """Convert array to numpy, handling both CPU and GPU arrays."""
-    if TORCH_AVAILABLE and torch is not None and isinstance(arr, torch.Tensor):
+    if TORCH_AVAILABLE and isinstance(arr, torch.Tensor):
         return arr.cpu().numpy()
     return np.asarray(arr)
 
