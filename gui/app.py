@@ -1359,41 +1359,67 @@ class StitcherGUI(QMainWindow):
             return
 
         try:
-            import napari
+            import matplotlib
 
-            viewer = napari.Viewer(title="Flatfield Correction")
+            matplotlib.use("Agg")  # Non-interactive backend
+            import matplotlib.pyplot as plt
+            import numpy as np
+            import tempfile
+            import subprocess
 
-            # Add flatfield (per channel)
             n_channels = self.flatfield.shape[0]
-            if n_channels == 1:
-                viewer.add_image(self.flatfield[0], name="Flatfield", colormap="viridis")
-            else:
+            has_darkfield = self.darkfield is not None
+            n_rows = 2 if has_darkfield else 1
+
+            fig, axes = plt.subplots(n_rows, n_channels, figsize=(4 * n_channels, 4 * n_rows))
+
+            # Handle single channel case (axes not 2D)
+            if n_channels == 1 and n_rows == 1:
+                axes = [[axes]]
+            elif n_channels == 1:
+                axes = [[ax] for ax in axes]
+            elif n_rows == 1:
+                axes = [axes]
+
+            # First row: flatfield
+            for ch in range(n_channels):
+                ax = axes[0][ch]
+                im = ax.imshow(self.flatfield[ch], cmap="viridis", vmin=0)
+                ax.set_title(f"Flatfield Ch{ch}")
+                ax.axis("off")
+                plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+            # Second row: darkfield (if available)
+            if has_darkfield:
                 for ch in range(n_channels):
-                    viewer.add_image(
-                        self.flatfield[ch],
-                        name=f"Flatfield Ch{ch}",
-                        colormap="viridis",
-                        visible=(ch == 0),
-                    )
+                    ax = axes[1][ch]
+                    im = ax.imshow(self.darkfield[ch], cmap="magma", vmin=0)
+                    # Show constant value in title if darkfield is uniform
+                    df_val = self.darkfield[ch].ravel()[0]
+                    if np.allclose(self.darkfield[ch], df_val):
+                        ax.set_title(f"Darkfield Ch{ch} (={df_val:.1f})")
+                    else:
+                        ax.set_title(f"Darkfield Ch{ch}")
+                    ax.axis("off")
+                    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
-            # Add darkfield if available
-            if self.darkfield is not None:
-                if n_channels == 1:
-                    viewer.add_image(
-                        self.darkfield[0], name="Darkfield", colormap="magma", visible=False
-                    )
+            plt.tight_layout()
+
+            # Save to temp file and open with system viewer
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                fig.savefig(f.name, dpi=150, bbox_inches="tight")
+                plt.close(fig)
+                # Open with default image viewer
+                if sys.platform == "darwin":
+                    subprocess.Popen(["open", f.name])
+                elif sys.platform == "win32":
+                    subprocess.Popen(["start", f.name], shell=True)
                 else:
-                    for ch in range(n_channels):
-                        viewer.add_image(
-                            self.darkfield[ch],
-                            name=f"Darkfield Ch{ch}",
-                            colormap="magma",
-                            visible=False,
-                        )
+                    subprocess.Popen(["xdg-open", f.name])
 
-            self.log("Opened flatfield viewer in napari")
+            self.log("Opened flatfield viewer")
         except Exception as e:
-            self.log(f"Error opening napari viewer: {e}")
+            self.log(f"Error opening viewer: {e}")
 
     def clear_flatfield(self):
         """Clear loaded/calculated flatfield."""
