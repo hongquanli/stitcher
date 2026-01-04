@@ -979,105 +979,59 @@ class StitcherGUI(QMainWindow):
 
         layout.addWidget(preview_group)
 
-        # Flatfield correction section
+        # Flatfield correction section (compact design)
         flatfield_group = QGroupBox("Flatfield Correction")
         flatfield_layout = QVBoxLayout(flatfield_group)
-        flatfield_layout.setSpacing(10)
+        flatfield_layout.setSpacing(8)
 
-        # Enable flatfield checkbox
-        self.flatfield_checkbox = QCheckBox("Enable flatfield correction")
-        self.flatfield_checkbox.setChecked(True)  # Default enabled
-        self.flatfield_checkbox.setMinimumHeight(32)
-        self.flatfield_checkbox.toggled.connect(self.on_flatfield_toggled)
-        flatfield_layout.addWidget(self.flatfield_checkbox)
+        # Drop area for loading flatfield files
+        self.flatfield_drop_area = FlatfieldDropArea()
+        self.flatfield_drop_area.fileDropped.connect(self.on_flatfield_dropped)
+        flatfield_layout.addWidget(self.flatfield_drop_area)
 
-        # Container for flatfield options (shown when enabled)
-        self.flatfield_options_widget = QWidget()
-        flatfield_options_layout = QVBoxLayout(self.flatfield_options_widget)
-        flatfield_options_layout.setContentsMargins(24, 0, 0, 0)
-        flatfield_options_layout.setSpacing(8)
+        # Action row: Calculate button, darkfield checkbox, status, view/clear buttons
+        action_layout = QHBoxLayout()
+        action_layout.setSpacing(12)
 
-        # Radio buttons for Calculate vs Load
-        self.flatfield_mode_group = QButtonGroup(self)
-        radio_layout = QHBoxLayout()
-
-        self.calc_radio = QRadioButton("Calculate from tiles")
-        self.calc_radio.setChecked(True)
-        self.flatfield_mode_group.addButton(self.calc_radio, 0)
-        radio_layout.addWidget(self.calc_radio)
-
-        self.load_radio = QRadioButton("Load from file")
-        self.flatfield_mode_group.addButton(self.load_radio, 1)
-        radio_layout.addWidget(self.load_radio)
-
-        radio_layout.addStretch()
-        flatfield_options_layout.addLayout(radio_layout)
-
-        # Calculate options container
-        self.calc_options_widget = QWidget()
-        calc_options_layout = QVBoxLayout(self.calc_options_widget)
-        calc_options_layout.setContentsMargins(0, 0, 0, 0)
-        calc_options_layout.setSpacing(8)
-
-        # Darkfield checkbox
-        self.darkfield_checkbox = QCheckBox("Include darkfield correction")
-        self.darkfield_checkbox.setChecked(False)
-        calc_options_layout.addWidget(self.darkfield_checkbox)
-
-        # Calculate and save buttons
-        calc_btn_layout = QHBoxLayout()
-        self.calc_flatfield_button = QPushButton("Calculate Flatfield")
+        self.calc_flatfield_button = QPushButton("Calculate")
         self.calc_flatfield_button.setObjectName("calcFlatfieldButton")
         self.calc_flatfield_button.setCursor(Qt.PointingHandCursor)
         self.calc_flatfield_button.clicked.connect(self.calculate_flatfield)
         self.calc_flatfield_button.setEnabled(False)
-        calc_btn_layout.addWidget(self.calc_flatfield_button)
+        self.calc_flatfield_button.setToolTip("Calculate flatfield from tiles using BaSiCPy")
+        action_layout.addWidget(self.calc_flatfield_button)
 
-        self.save_flatfield_button = QPushButton("Save")
-        self.save_flatfield_button.setCursor(Qt.PointingHandCursor)
-        self.save_flatfield_button.clicked.connect(self.save_flatfield)
-        self.save_flatfield_button.setEnabled(False)
-        self.save_flatfield_button.setToolTip("Save calculated flatfield to .npy file")
-        calc_btn_layout.addWidget(self.save_flatfield_button)
+        self.darkfield_checkbox = QCheckBox("Darkfield")
+        self.darkfield_checkbox.setChecked(False)
+        self.darkfield_checkbox.setToolTip("Include darkfield correction (slower)")
+        action_layout.addWidget(self.darkfield_checkbox)
 
-        calc_btn_layout.addStretch()
-        calc_options_layout.addLayout(calc_btn_layout)
+        action_layout.addStretch()
 
-        flatfield_options_layout.addWidget(self.calc_options_widget)
+        # Status label
+        self.flatfield_status = QLabel("No flatfield")
+        self.flatfield_status.setStyleSheet("color: #86868b; font-size: 12px;")
+        action_layout.addWidget(self.flatfield_status)
 
-        # Load options container
-        self.load_options_widget = QWidget()
-        self.load_options_widget.setVisible(False)
-        load_options_layout = QVBoxLayout(self.load_options_widget)
-        load_options_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.flatfield_drop_area = FlatfieldDropArea()
-        self.flatfield_drop_area.fileDropped.connect(self.on_flatfield_dropped)
-        load_options_layout.addWidget(self.flatfield_drop_area)
-
-        flatfield_options_layout.addWidget(self.load_options_widget)
-
-        # Flatfield status and view button
-        status_layout = QHBoxLayout()
-        self.flatfield_status = QLabel("")
-        self.flatfield_status.setStyleSheet("color: #86868b; font-size: 11px;")
-        status_layout.addWidget(self.flatfield_status)
-
+        # View button
         self.view_flatfield_button = QPushButton("View")
         self.view_flatfield_button.setCursor(Qt.PointingHandCursor)
         self.view_flatfield_button.clicked.connect(self.view_flatfield)
         self.view_flatfield_button.setEnabled(False)
-        self.view_flatfield_button.setToolTip("View flatfield and darkfield in napari")
-        self.view_flatfield_button.setFixedWidth(60)
-        status_layout.addWidget(self.view_flatfield_button)
-        status_layout.addStretch()
+        self.view_flatfield_button.setToolTip("View flatfield in napari")
+        self.view_flatfield_button.setFixedWidth(50)
+        action_layout.addWidget(self.view_flatfield_button)
 
-        flatfield_options_layout.addLayout(status_layout)
+        # Clear button
+        self.clear_flatfield_button = QPushButton("Clear")
+        self.clear_flatfield_button.setCursor(Qt.PointingHandCursor)
+        self.clear_flatfield_button.clicked.connect(self.clear_flatfield)
+        self.clear_flatfield_button.setEnabled(False)
+        self.clear_flatfield_button.setToolTip("Clear flatfield correction")
+        self.clear_flatfield_button.setFixedWidth(50)
+        action_layout.addWidget(self.clear_flatfield_button)
 
-        flatfield_layout.addWidget(self.flatfield_options_widget)
-
-        # Connect radio button signals
-        self.flatfield_mode_group.buttonClicked.connect(self.on_flatfield_mode_changed)
+        flatfield_layout.addLayout(action_layout)
 
         layout.addWidget(flatfield_group)
 
@@ -1204,13 +1158,15 @@ class StitcherGUI(QMainWindow):
         self.run_button.setEnabled(True)
         self.preview_button.setEnabled(True)
         self.calc_flatfield_button.setEnabled(True)
-        # Clear previous flatfield when new file is selected
-        self.flatfield = None
-        self.darkfield = None
-        self.flatfield_status.setText("")
-        self.flatfield_drop_area.clear()
-        self.view_flatfield_button.setEnabled(False)
-        self.save_flatfield_button.setEnabled(False)
+
+        # Clear previous flatfield
+        self.clear_flatfield()
+
+        # Auto-load existing flatfield if it exists
+        flatfield_path = path.parent / f"{path.stem}_flatfield.npy"
+        if flatfield_path.exists():
+            self.log(f"Found existing flatfield: {flatfield_path.name}")
+            self._load_flatfield_file(flatfield_path)
 
     def on_registration_toggled(self, checked):
         self.downsample_widget.setVisible(checked)
@@ -1218,27 +1174,13 @@ class StitcherGUI(QMainWindow):
     def on_blend_toggled(self, checked):
         self.blend_value_widget.setVisible(checked)
 
-    def on_flatfield_toggled(self, checked):
-        self.flatfield_options_widget.setVisible(checked)
-        if not checked:
-            # Clear flatfield when disabled
-            self.flatfield = None
-            self.darkfield = None
-            self.flatfield_status.setText("")
-            self.view_flatfield_button.setEnabled(False)
-
-    def on_flatfield_mode_changed(self, button):
-        is_calculate = self.calc_radio.isChecked()
-        self.calc_options_widget.setVisible(is_calculate)
-        self.load_options_widget.setVisible(not is_calculate)
-
     def calculate_flatfield(self):
         if not self.drop_area.file_path:
             return
 
         self.calc_flatfield_button.setEnabled(False)
-        self.flatfield_status.setText("Calculating flatfield...")
-        self.flatfield_status.setStyleSheet("color: #ff9500; font-size: 11px;")
+        self.flatfield_status.setText("Calculating...")
+        self.flatfield_status.setStyleSheet("color: #ff9500; font-size: 12px;")
 
         self.flatfield_worker = FlatfieldWorker(
             self.drop_area.file_path,
@@ -1254,15 +1196,15 @@ class StitcherGUI(QMainWindow):
         self.flatfield = flatfield
         self.darkfield = darkfield
         self.calc_flatfield_button.setEnabled(True)
-        self.save_flatfield_button.setEnabled(True)
         self.view_flatfield_button.setEnabled(True)
+        self.clear_flatfield_button.setEnabled(True)
 
         n_channels = flatfield.shape[0]
-        status = f"Flatfield ready ({n_channels} channels)"
+        status = f"Ready ({n_channels}ch)"
         if darkfield is not None:
-            status += " + darkfield"
+            status += " +dark"
         self.flatfield_status.setText(status)
-        self.flatfield_status.setStyleSheet("color: #34c759; font-size: 11px; font-weight: 600;")
+        self.flatfield_status.setStyleSheet("color: #34c759; font-size: 12px; font-weight: 600;")
         self.log(f"Flatfield calculation complete: {flatfield.shape}")
 
         # Auto-save flatfield next to input file
@@ -1273,66 +1215,54 @@ class StitcherGUI(QMainWindow):
                 input_path = Path(self.drop_area.file_path)
                 auto_save_path = input_path.parent / f"{input_path.stem}_flatfield.npy"
                 save_ff(auto_save_path, self.flatfield, self.darkfield)
-                self.log(f"Auto-saved flatfield to {auto_save_path}")
+                self.log(f"Auto-saved to {auto_save_path.name}")
             except Exception as e:
                 self.log(f"Warning: Could not auto-save flatfield: {e}")
 
-    def save_flatfield(self):
-        if self.flatfield is None:
-            return
-
-        # Default filename based on input
-        default_name = "flatfield.npy"
-        if self.drop_area.file_path:
-            default_name = f"{Path(self.drop_area.file_path).stem}_flatfield.npy"
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Flatfield",
-            (
-                str(Path(self.drop_area.file_path).parent / default_name)
-                if self.drop_area.file_path
-                else default_name
-            ),
-            "NumPy files (*.npy);;All files (*.*)",
-        )
-        if file_path:
-            try:
-                from tilefusion import save_flatfield as save_ff
-
-                save_ff(Path(file_path), self.flatfield, self.darkfield)
-                self.log(f"Saved flatfield to {file_path}")
-            except Exception as e:
-                self.log(f"Error saving flatfield: {e}")
-
     def on_flatfield_error(self, error_msg):
         self.calc_flatfield_button.setEnabled(True)
-        self.flatfield_status.setText("Calculation failed")
-        self.flatfield_status.setStyleSheet("color: #ff3b30; font-size: 11px;")
+        self.flatfield_status.setText("Failed")
+        self.flatfield_status.setStyleSheet("color: #ff3b30; font-size: 12px;")
         self.log(error_msg)
 
     def on_flatfield_dropped(self, file_path):
-        import numpy as np
+        """Handle flatfield file dropped on drop area."""
+        self._load_flatfield_file(Path(file_path))
 
+    def _load_flatfield_file(self, file_path):
+        """Load flatfield from file and update UI."""
         try:
             from tilefusion import load_flatfield
 
             self.flatfield, self.darkfield = load_flatfield(file_path)
             n_channels = self.flatfield.shape[0]
-            status = f"Loaded ({n_channels} channels)"
+            status = f"Loaded ({n_channels}ch)"
             if self.darkfield is not None:
-                status += " + darkfield"
+                status += " +dark"
             self.flatfield_status.setText(status)
             self.flatfield_status.setStyleSheet(
-                "color: #34c759; font-size: 11px; font-weight: 600;"
+                "color: #34c759; font-size: 12px; font-weight: 600;"
             )
             self.view_flatfield_button.setEnabled(True)
-            self.log(f"Loaded flatfield from {file_path}: {self.flatfield.shape}")
+            self.clear_flatfield_button.setEnabled(True)
+            self.flatfield_drop_area.setFile(str(file_path))
+            self.log(f"Loaded flatfield: {file_path.name}")
         except Exception as e:
-            self.flatfield_status.setText(f"Load failed: {e}")
-            self.flatfield_status.setStyleSheet("color: #ff3b30; font-size: 11px;")
+            self.flatfield_status.setText("Load failed")
+            self.flatfield_status.setStyleSheet("color: #ff3b30; font-size: 12px;")
             self.view_flatfield_button.setEnabled(False)
+            self.clear_flatfield_button.setEnabled(False)
             self.log(f"Error loading flatfield: {e}")
+
+    def clear_flatfield(self):
+        """Clear loaded flatfield correction."""
+        self.flatfield = None
+        self.darkfield = None
+        self.flatfield_status.setText("No flatfield")
+        self.flatfield_status.setStyleSheet("color: #86868b; font-size: 12px;")
+        self.view_flatfield_button.setEnabled(False)
+        self.clear_flatfield_button.setEnabled(False)
+        self.flatfield_drop_area.clear()
 
     def view_flatfield(self):
         if self.flatfield is None:
@@ -1396,18 +1326,14 @@ class StitcherGUI(QMainWindow):
             blend_pixels = (0, 0)
             fusion_mode = "direct"
 
-        # Get flatfield if enabled
-        flatfield = self.flatfield if self.flatfield_checkbox.isChecked() else None
-        darkfield = self.darkfield if self.flatfield_checkbox.isChecked() else None
-
         self.worker = FusionWorker(
             self.drop_area.file_path,
             self.registration_checkbox.isChecked(),
             blend_pixels,
             self.downsample_spin.value(),
             fusion_mode,
-            flatfield=flatfield,
-            darkfield=darkfield,
+            flatfield=self.flatfield,
+            darkfield=self.darkfield,
         )
         self.worker.progress.connect(self.log)
         self.worker.finished.connect(self.on_fusion_finished)
@@ -1462,17 +1388,13 @@ class StitcherGUI(QMainWindow):
         self.log_text.clear()
         self.log("Starting preview...")
 
-        # Get flatfield if enabled
-        flatfield = self.flatfield if self.flatfield_checkbox.isChecked() else None
-        darkfield = self.darkfield if self.flatfield_checkbox.isChecked() else None
-
         self.preview_worker = PreviewWorker(
             self.drop_area.file_path,
             self.preview_cols_spin.value(),
             self.preview_rows_spin.value(),
             self.downsample_spin.value(),
-            flatfield=flatfield,
-            darkfield=darkfield,
+            flatfield=self.flatfield,
+            darkfield=self.darkfield,
         )
         self.preview_worker.progress.connect(self.log)
         self.preview_worker.finished.connect(self.on_preview_finished)
