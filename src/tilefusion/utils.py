@@ -154,7 +154,7 @@ def _subpixel_refine_torch(correlation, peak_y, peak_x, h, w):
 # =============================================================================
 
 
-def shift_array(arr, shift_vec):
+def shift_array(arr, shift_vec, preserve_dtype=True):
     """
     Shift array by subpixel amounts using GPU (torch) or CPU (scipy).
 
@@ -164,6 +164,8 @@ def shift_array(arr, shift_vec):
         2D input array.
     shift_vec : array-like
         (dy, dx) shift amounts.
+    preserve_dtype : bool
+        If True, output dtype matches input dtype. Default True.
 
     Returns
     -------
@@ -171,11 +173,16 @@ def shift_array(arr, shift_vec):
         Shifted array, same shape as input.
     """
     arr_np = np.asarray(arr)
+    original_dtype = arr_np.dtype
 
     if CUDA_AVAILABLE and arr_np.ndim == 2:
-        return _shift_array_torch(arr_np, shift_vec)
+        result = _shift_array_torch(arr_np, shift_vec)
+    else:
+        result = _shift_cpu(arr_np, shift=shift_vec, order=1, prefilter=False)
 
-    return _shift_cpu(arr_np, shift=shift_vec, order=1, prefilter=False)
+    if preserve_dtype and result.dtype != original_dtype:
+        return result.astype(original_dtype)
+    return result
 
 
 def _shift_array_torch(arr: np.ndarray, shift_vec) -> np.ndarray:
@@ -213,7 +220,7 @@ def _shift_array_torch(arr: np.ndarray, shift_vec) -> np.ndarray:
 # =============================================================================
 
 
-def match_histograms(image, reference):
+def match_histograms(image, reference, preserve_dtype=True):
     """
     Match histogram of image to reference using GPU (torch) or CPU (skimage).
 
@@ -223,6 +230,8 @@ def match_histograms(image, reference):
         Image to transform.
     reference : ndarray
         Reference image for histogram matching.
+    preserve_dtype : bool
+        If True, output dtype matches input dtype. Default True.
 
     Returns
     -------
@@ -231,11 +240,16 @@ def match_histograms(image, reference):
     """
     image_np = np.asarray(image)
     reference_np = np.asarray(reference)
+    original_dtype = image_np.dtype
 
     if CUDA_AVAILABLE and image_np.ndim == 2:
-        return _match_histograms_torch(image_np, reference_np)
+        result = _match_histograms_torch(image_np, reference_np)
+    else:
+        result = _match_histograms_cpu(image_np, reference_np)
 
-    return _match_histograms_cpu(image_np, reference_np)
+    if preserve_dtype and result.dtype != original_dtype:
+        return result.astype(original_dtype)
+    return result
 
 
 def _match_histograms_torch(image: np.ndarray, reference: np.ndarray) -> np.ndarray:
@@ -267,7 +281,7 @@ def _match_histograms_torch(image: np.ndarray, reference: np.ndarray) -> np.ndar
 # =============================================================================
 
 
-def block_reduce(arr, block_size, func=np.mean):
+def block_reduce(arr, block_size, func=np.mean, preserve_dtype=True):
     """
     Block reduce array using GPU (torch) or CPU (skimage).
 
@@ -279,17 +293,24 @@ def block_reduce(arr, block_size, func=np.mean):
         Reduction factors per dimension.
     func : callable
         Reduction function (only np.mean supported on GPU).
+    preserve_dtype : bool
+        If True, output dtype matches input dtype. Default True.
 
     Returns
     -------
     reduced : ndarray
     """
     arr_np = np.asarray(arr)
+    original_dtype = arr_np.dtype
 
     if CUDA_AVAILABLE and func == np.mean and arr_np.ndim >= 2:
-        return _block_reduce_torch(arr_np, block_size)
+        result = _block_reduce_torch(arr_np, block_size)
+    else:
+        result = _block_reduce_cpu(arr_np, block_size, func)
 
-    return _block_reduce_cpu(arr_np, block_size, func)
+    if preserve_dtype and result.dtype != original_dtype:
+        return result.astype(original_dtype)
+    return result
 
 
 def _block_reduce_torch(arr: np.ndarray, block_size: tuple) -> np.ndarray:
