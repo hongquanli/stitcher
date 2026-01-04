@@ -20,3 +20,13 @@ def sample_tile(rng):
 def sample_multichannel_tile(rng):
     """Generate a sample multi-channel tile."""
     return rng.random((3, 100, 100), dtype=np.float32) * 65535
+
+
+@pytest.fixture
+def force_cpu(monkeypatch):
+    """Force CPU fallback by setting CUDA_AVAILABLE to False."""
+    import tilefusion.utils as utils
+
+    monkeypatch.setattr(utils, "CUDA_AVAILABLE", False)
+    yield
+    # monkeypatch automatically restores after test
