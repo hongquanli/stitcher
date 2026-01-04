@@ -21,6 +21,7 @@ except ImportError:
 def calculate_flatfield(
     tiles: List[np.ndarray],
     use_darkfield: bool = False,
+    constant_darkfield: bool = True,
 ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
     """
     Calculate flatfield (and optionally darkfield) using BaSiCPy.
@@ -31,6 +32,10 @@ def calculate_flatfield(
         List of tile images, each with shape (C, Y, X).
     use_darkfield : bool
         Whether to also compute darkfield correction.
+    constant_darkfield : bool
+        If True, darkfield is reduced to a single constant value (median) per
+        channel. This is physically appropriate since dark current is typically
+        uniform across the sensor. Default is True.
 
     Returns
     -------
@@ -38,6 +43,7 @@ def calculate_flatfield(
         Flatfield correction array with shape (C, Y, X), float32.
     darkfield : ndarray or None
         Darkfield correction array with shape (C, Y, X), or None if not computed.
+        If constant_darkfield=True, each channel slice will be a constant value.
 
     Raises
     ------
@@ -80,7 +86,12 @@ def calculate_flatfield(
         flatfield[ch] = basic.flatfield.astype(np.float32)
 
         if use_darkfield:
-            darkfield[ch] = basic.darkfield.astype(np.float32)
+            if constant_darkfield:
+                # Use median value for constant darkfield (more robust than mean)
+                df_value = np.median(basic.darkfield)
+                darkfield[ch] = np.full(tile_shape, df_value, dtype=np.float32)
+            else:
+                darkfield[ch] = basic.darkfield.astype(np.float32)
 
     return flatfield, darkfield
 
