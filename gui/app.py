@@ -1067,7 +1067,7 @@ class StitcherGUI(QMainWindow):
         self.view_flatfield_button.setCursor(Qt.PointingHandCursor)
         self.view_flatfield_button.clicked.connect(self.view_flatfield)
         self.view_flatfield_button.setEnabled(False)
-        self.view_flatfield_button.setToolTip("View flatfield and darkfield in napari")
+        self.view_flatfield_button.setToolTip("View flatfield and darkfield")
         self.view_flatfield_button.setFixedWidth(60)
         status_layout.addWidget(self.view_flatfield_button)
 
