@@ -54,7 +54,7 @@ def calculate_flatfield(
     """
     if not HAS_BASICPY:
         raise ImportError(
-            "basicpy is required for flatfield calculation. " "Install with: pip install basicpy"
+            "basicpy is required for flatfield calculation. Install with: pip install basicpy"
         )
 
     if not tiles:
@@ -121,7 +121,22 @@ def apply_flatfield(
     -------
     corrected : ndarray
         Corrected tile with shape (C, Y, X), same dtype as input.
+
+    Raises
+    ------
+    ValueError
+        If tile and flatfield shapes are incompatible.
     """
+    # Validate shapes
+    if tile.shape != flatfield.shape:
+        raise ValueError(
+            f"Tile shape {tile.shape} does not match flatfield shape {flatfield.shape}"
+        )
+    if darkfield is not None and tile.shape != darkfield.shape:
+        raise ValueError(
+            f"Tile shape {tile.shape} does not match darkfield shape {darkfield.shape}"
+        )
+
     # Avoid division by zero
     flatfield_safe = np.where(flatfield > 1e-6, flatfield, 1.0)
 
@@ -158,7 +173,18 @@ def apply_flatfield_region(
     -------
     corrected : ndarray
         Corrected region with same shape as input.
+
+    Raises
+    ------
+    ValueError
+        If region and flatfield shapes are incompatible.
     """
+    # Validate channel count for 3D regions
+    if region.ndim == 3 and region.shape[0] != flatfield.shape[0]:
+        raise ValueError(
+            f"Region has {region.shape[0]} channels but flatfield has {flatfield.shape[0]} channels"
+        )
+
     # Extract corresponding flatfield/darkfield regions
     if region.ndim == 2:
         ff_region = flatfield[0, y_slice, x_slice]
@@ -219,8 +245,28 @@ def load_flatfield(path: Path) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         Flatfield array with shape (C, Y, X).
     darkfield : ndarray or None
         Darkfield array with shape (C, Y, X), or None if not present.
+
+    Raises
+    ------
+    ValueError
+        If the file format is invalid (not a dictionary with 'flatfield' key).
     """
-    data = np.load(path, allow_pickle=True).item()
+    loaded = np.load(path, allow_pickle=True)
+    try:
+        data = loaded.item()
+    except (AttributeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid flatfield file format at '{path}'. "
+            "Expected a NumPy .npy file containing a dictionary as saved by "
+            "`save_flatfield` (with keys like 'flatfield' and 'darkfield')."
+        ) from exc
+
+    if not isinstance(data, dict) or "flatfield" not in data:
+        raise ValueError(
+            f"Invalid flatfield file format at '{path}'. "
+            "Expected a dictionary with at least a 'flatfield' entry."
+        )
+
     flatfield = data["flatfield"]
     darkfield = data.get("darkfield", None)
     return flatfield, darkfield

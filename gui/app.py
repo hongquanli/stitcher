@@ -1235,15 +1235,8 @@ class StitcherGUI(QMainWindow):
         self.blend_value_widget.setVisible(checked)
 
     def on_flatfield_toggled(self, checked):
+        # Only show/hide flatfield options; preserve any loaded/calculated data
         self.flatfield_options_widget.setVisible(checked)
-        if not checked:
-            # Clear flatfield when disabled
-            self.flatfield = None
-            self.darkfield = None
-            self.flatfield_status.setText("No flatfield")
-            self.flatfield_status.setStyleSheet("color: #86868b; font-size: 11px;")
-            self.view_flatfield_button.setEnabled(False)
-            self.clear_flatfield_button.setEnabled(False)
 
     def on_flatfield_mode_changed(self, button):
         is_calculate = self.calc_radio.isChecked()
