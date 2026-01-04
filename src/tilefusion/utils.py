@@ -193,6 +193,11 @@ def shift_array(arr, shift_vec, preserve_dtype=True):
 def _shift_array_torch(arr: np.ndarray, shift_vec) -> np.ndarray:
     """GPU shift using torch.nn.functional.grid_sample."""
     h, w = arr.shape
+
+    # Guard against degenerate arrays (need at least 2 pixels for interpolation)
+    if h < 2 or w < 2:
+        return _shift_cpu(arr, shift=shift_vec, order=1, prefilter=False)
+
     dy, dx = float(shift_vec[0]), float(shift_vec[1])
 
     # Create pixel coordinate grids
