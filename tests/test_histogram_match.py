@@ -48,6 +48,17 @@ class TestMatchHistograms:
         result = match_histograms(img, ref)
         assert result.shape == img.shape
 
+    def test_pixel_values_match_skimage(self, rng):
+        """Test pixel-by-pixel matching against skimage."""
+        img = rng.random((64, 64)).astype(np.float32)
+        ref = rng.random((64, 64)).astype(np.float32) * 2 + 1
+
+        cpu = skimage_match(img, ref)
+        gpu = match_histograms(img, ref)
+
+        # Pixel values should be close (not just histogram shape)
+        np.testing.assert_allclose(gpu, cpu, rtol=1e-4, atol=1e-4)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

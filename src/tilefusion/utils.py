@@ -5,7 +5,7 @@ GPU/CPU detection, array operations, and helper functions.
 All functions support GPU acceleration via PyTorch with automatic CPU fallback.
 """
 
-from typing import Any, Callable, Union
+from typing import Any, Callable
 
 import numpy as np
 
@@ -315,9 +315,8 @@ def _match_histograms_torch(image: np.ndarray, reference: np.ndarray) -> np.ndar
     inv_indices[img_indices] = torch.arange(len(img), device="cuda")
 
     # Map image values to reference values via quantile matching
-    # For each pixel, find corresponding quantile in reference
-    interp_values = torch.zeros_like(img)
-    interp_values[img_indices] = ref_sorted[
+    # inv_indices[i] = rank of pixel i, so look up ref value at that scaled rank
+    interp_values = ref_sorted[
         (inv_indices.float() / len(img) * len(ref)).long().clamp(0, len(ref) - 1)
     ]
 
@@ -499,7 +498,7 @@ def to_numpy(arr) -> np.ndarray:
     return np.asarray(arr)
 
 
-def to_device(arr) -> Union[Any, np.ndarray]:
+def to_device(arr) -> Any:
     """Move array to GPU if available, else return numpy array.
 
     Returns torch.Tensor on GPU if CUDA available, else np.ndarray.
