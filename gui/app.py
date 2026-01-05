@@ -563,26 +563,16 @@ class FlatfieldDropArea(QFrame):
     """Small drag and drop area for flatfield .npy files."""
 
     fileDropped = pyqtSignal(str)
+    _default_style = "border: 2px dashed #888; border-radius: 8px; background: #fafafa;"
+    _hover_style = "border: 2px dashed #5856d6; border-radius: 8px; background: #f0f0ff;"
+    _active_style = "border: 2px solid #5856d6; border-radius: 8px; background: #f5f5ff;"
 
     def __init__(self):
         super().__init__()
         self.setAcceptDrops(True)
-        self.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
         self.setMinimumHeight(60)
         self.setMaximumHeight(80)
-        self.setStyleSheet(
-            """
-            QFrame {
-                border: 2px dashed #c7c7cc;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-            QFrame:hover {
-                border-color: #5856d6;
-                background-color: #f5f5ff;
-            }
-        """
-        )
+        self.setStyleSheet(self._default_style)
 
         layout = QHBoxLayout(self)
         layout.setSpacing(8)
@@ -591,10 +581,8 @@ class FlatfieldDropArea(QFrame):
         self.icon_label.setStyleSheet("font-size: 20px; border: none; background: transparent;")
         layout.addWidget(self.icon_label)
 
-        self.label = QLabel("Drop flatfield .npy file here or click to browse")
-        self.label.setStyleSheet(
-            "color: #86868b; font-size: 12px; border: none; background: transparent;"
-        )
+        self.label = QLabel("Drop flatfield .npy here or click to browse")
+        self.label.setStyleSheet("border: none; background: transparent;")
         layout.addWidget(self.label)
         layout.addStretch()
 
@@ -603,44 +591,25 @@ class FlatfieldDropArea(QFrame):
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self.setStyleSheet(
-                """
-                QFrame {
-                    border: 2px dashed #5856d6;
-                    border-radius: 8px;
-                    background-color: #ebebff;
-                }
-            """
-            )
+            self.setStyleSheet(self._hover_style)
 
     def dragLeaveEvent(self, event):
-        self.setStyleSheet(
-            """
-            QFrame {
-                border: 2px dashed #c7c7cc;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-        """
-        )
+        if self.file_path:
+            self.setStyleSheet(self._active_style)
+        else:
+            self.setStyleSheet(self._default_style)
 
     def dropEvent(self, event: QDropEvent):
-        self.setStyleSheet(
-            """
-            QFrame {
-                border: 2px dashed #c7c7cc;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-        """
-        )
-
         urls = event.mimeData().urls()
         if urls:
             file_path = urls[0].toLocalFile()
             if file_path.endswith(".npy"):
                 self.setFile(file_path)
                 self.fileDropped.emit(file_path)
+            else:
+                self.setStyleSheet(self._default_style)
+        else:
+            self.setStyleSheet(self._default_style)
 
     def mousePressEvent(self, event):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -653,19 +622,15 @@ class FlatfieldDropArea(QFrame):
     def setFile(self, file_path):
         self.file_path = file_path
         path = Path(file_path)
+        self.setStyleSheet(self._active_style)
         self.icon_label.setText("✅")
         self.label.setText(path.name)
-        self.label.setStyleSheet(
-            "color: #5856d6; font-size: 12px; font-weight: 600; border: none; background: transparent;"
-        )
 
     def clear(self):
         self.file_path = None
+        self.setStyleSheet(self._default_style)
         self.icon_label.setText("📄")
-        self.label.setText("Drop flatfield .npy file here or click to browse")
-        self.label.setStyleSheet(
-            "color: #86868b; font-size: 12px; border: none; background: transparent;"
-        )
+        self.label.setText("Drop flatfield .npy here or click to browse")
 
 
 class FlatfieldWorker(QThread):
