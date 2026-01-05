@@ -92,9 +92,11 @@ def phase_cross_correlation(
     shift : ndarray
         Shift vector (y, x).
     error : float
-        Translation invariant normalized RMS error (placeholder).
+        Translation invariant normalized RMS error.
+        Note: GPU path returns 0.0 (not computed).
     phasediff : float
-        Global phase difference (placeholder).
+        Global phase difference.
+        Note: GPU path returns 0.0 (not computed).
     """
     ref_np = np.asarray(reference_image)
     mov_np = np.asarray(moving_image)
