@@ -1433,7 +1433,7 @@ class StitcherGUI(QMainWindow):
                 if sys.platform == "darwin":
                     subprocess.Popen(["open", f.name])
                 elif sys.platform == "win32":
-                    os.startfile(f.name)
+                    subprocess.Popen(["cmd", "/c", "start", "", f.name])
                 else:
                     subprocess.Popen(["xdg-open", f.name])
 

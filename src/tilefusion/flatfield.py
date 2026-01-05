@@ -61,6 +61,13 @@ def calculate_flatfield(
     if not tiles:
         raise ValueError("tiles list is empty")
 
+    # Validate tile dimensionality: only 2D (Y, X) or 3D (C, Y, X) supported
+    for i, t in enumerate(tiles):
+        if t.ndim not in (2, 3):
+            raise ValueError(
+                f"Tile {i} has {t.ndim} dimensions; expected 2 (Y, X) or 3 (C, Y, X)"
+            )
+
     # Support 2D (Y, X) arrays by converting to 3D (1, Y, X)
     tiles = [t[np.newaxis, ...] if t.ndim == 2 else t for t in tiles]
 
@@ -85,7 +92,13 @@ def calculate_flatfield(
 
         # Create BaSiC instance and fit
         basic = BaSiC(get_darkfield=use_darkfield, smoothness_flatfield=1.0)
-        basic.fit(channel_stack)
+        try:
+            basic.fit(channel_stack)
+        except Exception as exc:
+            raise RuntimeError(
+                f"BaSiCPy flatfield fitting failed for channel {ch} "
+                f"with data shape {channel_stack.shape}"
+            ) from exc
 
         flatfield[ch] = basic.flatfield.astype(np.float32)
 
