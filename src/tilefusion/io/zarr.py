@@ -390,6 +390,6 @@ def write_scale_group_metadata(scale_path: Path, zarr_version: int = 2) -> None:
         # Zarr v2 format
         ngff = {"_ARRAY_DIMENSIONS": ["t", "c", "z", "y", "x"]}
         with open(scale_path / ".zgroup", "w") as f:
-            json.dump({}, f)
+            json.dump({"zarr_format": 2}, f)
         with open(scale_path / ".zattrs", "w") as f:
             json.dump(ngff, f, indent=2)
